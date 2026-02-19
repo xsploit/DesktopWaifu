@@ -277,6 +277,7 @@
 			} else if (tts.provider === 'qwen') {
 				ttsManager.qwenEndpoint = tts.qwenEndpoint;
 				ttsManager.qwenLanguage = tts.qwenLanguage;
+				ttsManager.qwenVoiceId = tts.qwenVoiceId;
 			}
 			ttsManager.enableTts = true;
 			if (!ttsManager.audioContext) await ttsManager.initialize();
@@ -440,6 +441,12 @@
 				<option value={lang}>{lang}</option>
 			{/each}
 		</select>
+	</div>
+
+	<div class="control-group">
+		<div class="control-label">Qwen Voice ID</div>
+		<input type="text" class="input-tech" bind:value={tts.qwenVoiceId} placeholder="Preset ID from manager (optional)" />
+		<small class="hint">Manage/upload voices in Manager. Empty uses server default active voice.</small>
 	</div>
 
 	<div class="control-group">

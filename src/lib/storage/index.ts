@@ -348,6 +348,7 @@ export class StorageManager {
 			await this.setSetting('tts.fishLatency', tts.fishLatency);
 			await this.setSetting('tts.qwenEndpoint', tts.qwenEndpoint ?? 'http://localhost:8880');
 			await this.setSetting('tts.qwenLanguage', tts.qwenLanguage ?? 'English');
+			await this.setSetting('tts.qwenVoiceId', tts.qwenVoiceId ?? '');
 			await this.setSetting('tts.fishApiKey', tts.fishApiKey);
 			await this.setSetting('tts.enabled', tts.enabled);
 			await this.setSetting('tts.fishModel', tts.fishModel);
@@ -433,6 +434,7 @@ export class StorageManager {
 				fishLatency: await this.getSetting('tts.fishLatency', 'balanced'),
 				qwenEndpoint: await this.getSetting('tts.qwenEndpoint', 'http://localhost:8880'),
 				qwenLanguage: await this.getSetting('tts.qwenLanguage', 'English'),
+				qwenVoiceId: await this.getSetting('tts.qwenVoiceId', ''),
 				fishApiKey: (await this.getSetting('tts.fishApiKey', '')) || (await this.getSetting('tts.apiKey', '')),
 				enabled: await this.getSetting('tts.enabled', true),
 				fishModel: await this.getSetting('tts.fishModel', 's1'),

@@ -201,6 +201,7 @@
 				if (ttsSettings.provider === 'qwen') {
 					ttsManager.qwenEndpoint = ttsSettings.qwenEndpoint;
 					ttsManager.qwenLanguage = ttsSettings.qwenLanguage;
+					ttsManager.qwenVoiceId = ttsSettings.qwenVoiceId;
 				}
 
 				ttsManager.enableTts = true;
@@ -276,6 +277,7 @@
 					ttsSettings.fishLatency = state.tts.fishLatency ?? ttsSettings.fishLatency;
 					ttsSettings.qwenEndpoint = state.tts.qwenEndpoint ?? ttsSettings.qwenEndpoint;
 					ttsSettings.qwenLanguage = state.tts.qwenLanguage ?? ttsSettings.qwenLanguage;
+					ttsSettings.qwenVoiceId = state.tts.qwenVoiceId ?? ttsSettings.qwenVoiceId;
 					ttsSettings.fishApiKey = state.tts.fishApiKey ?? '';
 					ttsSettings.enabled = state.tts.enabled ?? ttsSettings.enabled;
 					ttsSettings.fishModel = state.tts.fishModel ?? ttsSettings.fishModel;
@@ -445,6 +447,7 @@
 				if (ttsSettings.provider === 'qwen') {
 					ttsManager.qwenEndpoint = ttsSettings.qwenEndpoint;
 					ttsManager.qwenLanguage = ttsSettings.qwenLanguage;
+					ttsManager.qwenVoiceId = ttsSettings.qwenVoiceId;
 				}
 
 				// Load memory settings
@@ -718,6 +721,7 @@
 				fishLatency: ttsSettings.fishLatency,
 				qwenEndpoint: ttsSettings.qwenEndpoint,
 				qwenLanguage: ttsSettings.qwenLanguage,
+				qwenVoiceId: ttsSettings.qwenVoiceId,
 				fishApiKey: ttsSettings.fishApiKey,
 				enabled: ttsSettings.enabled,
 				fishModel: ttsSettings.fishModel,

@@ -55,6 +55,8 @@ export class LlmClient {
 	onResponseReceived: ((text: string) => void) | null = null;
 	onStreamChunk: ((delta: string) => void) | null = null;
 	onError: ((error: Error) => void) | null = null;
+	_lastModelFetchErrorKey = '';
+	_lastModelFetchErrorAt = 0;
 
 	_buildMessages(userMessage: string): ChatMessage[] {
 		return [
@@ -228,7 +230,23 @@ export class LlmClient {
 					return [];
 			}
 		} catch (error) {
-			console.error('[LlmClient] Failed to fetch models:', error);
+			const message = error instanceof Error ? error.message : String(error);
+			const key = `${this.provider}|${this.endpoint}|${message}`;
+			const now = Date.now();
+			const shouldLog = key !== this._lastModelFetchErrorKey || now - this._lastModelFetchErrorAt > 30000;
+			if (shouldLog) {
+				const localProvider = this.provider === 'ollama' || this.provider === 'lmstudio';
+				if (localProvider) {
+					console.warn(
+						`[LlmClient] ${this.provider} model endpoint unavailable (${this.endpoint}). ` +
+						'Start the local server or update endpoint in Manager.'
+					);
+				} else {
+					console.error('[LlmClient] Failed to fetch models:', error);
+				}
+				this._lastModelFetchErrorKey = key;
+				this._lastModelFetchErrorAt = now;
+			}
 			return [];
 		}
 	}
@@ -291,4 +309,3 @@ export function getLlmClient() {
 	if (!instance) instance = new LlmClient();
 	return instance;
 }
-

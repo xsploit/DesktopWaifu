@@ -207,6 +207,7 @@ let ttsFishVoiceId = $state('');
 let ttsFishLatency = $state<'normal' | 'balanced'>('balanced');
 let ttsQwenEndpoint = $state('http://localhost:8880');
 let ttsQwenLanguage = $state('English');
+let ttsQwenVoiceId = $state('');
 let ttsEnabled = $state(true);
 let fishApiKey = $state('');
 let kokoroReady = $state(false);
@@ -232,6 +233,8 @@ export function getTtsSettings() {
 		set qwenEndpoint(v: string) { ttsQwenEndpoint = v; },
 		get qwenLanguage() { return ttsQwenLanguage; },
 		set qwenLanguage(v: string) { ttsQwenLanguage = v; },
+		get qwenVoiceId() { return ttsQwenVoiceId; },
+		set qwenVoiceId(v: string) { ttsQwenVoiceId = v; },
 		get enabled() { return ttsEnabled; },
 		set enabled(v: boolean) { ttsEnabled = v; },
 		get fishApiKey() { return fishApiKey; },

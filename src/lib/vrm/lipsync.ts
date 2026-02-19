@@ -7,9 +7,9 @@ export const PHONEME_TO_BLEND_SHAPE: Record<string, Record<string, number>> = {
 	'\u00e6': { aa: 0.7 },
 	a: { aa: 0.8 },
 	'\u0251': { aa: 1.0 },
-	'\u0252': { oh: 0.8 },
-	'\u0254': { oh: 1.0 },
-	o: { oh: 0.9 },
+	'\u0252': { oh: 0.45, ou: 0.2 },
+	'\u0254': { oh: 0.55, ou: 0.25 },
+	o: { oh: 0.5, ou: 0.2 },
 	'\u028a': { ou: 0.7 },
 	u: { ou: 1.0 },
 	'\u028c': { aa: 0.5, oh: 0.3 },
@@ -53,6 +53,14 @@ let previousOu = 0;
 let previousEe = 0;
 let previousOh = 0;
 
+// Baseline tuning inspired by WEBWAIFUV2 defaults.
+const MOUTH_SMOOTHING = 0.56;
+const PHONEME_GAIN = 0.39;
+
+function clamp01(value: number): number {
+	return Math.min(Math.max(value, 0), 1);
+}
+
 // Cache cleaned phoneme arrays to avoid regex + split + filter every frame
 const phonemeCache = new Map<string, string[]>();
 function getCleanPhonemes(raw: string): string[] {
@@ -92,8 +100,15 @@ export function updateLipSync(vrm: VRM | null, ttsManager: TtsManager) {
 		return;
 	}
 
+	// Read MFCC weights before hard-gating so we can keep lips moving
+	// even when analyser amplitude is temporarily low.
+	const mfccWeights = ttsManager.getLipSyncWeights();
+	const mfccEnergy = mfccWeights
+		? (mfccWeights.A + mfccWeights.I + mfccWeights.U + mfccWeights.E + mfccWeights.O)
+		: 0;
+
 	const audioAmplitude = ttsManager.getAudioAmplitude();
-	const isAudioActive = audioAmplitude > 0.02;
+	const isAudioActive = audioAmplitude > 0.01 || mfccEnergy > 0.02;
 
 	if (!isAudioActive) {
 		manager.setValue('aa', 0);
@@ -115,6 +130,7 @@ export function updateLipSync(vrm: VRM | null, ttsManager: TtsManager) {
 		targetOu = 0,
 		targetEe = 0,
 		targetOh = 0;
+	const phonemeGain = PHONEME_GAIN;
 
 	const hasValidTiming =
 		ttsManager.wordBoundaries &&
@@ -142,43 +158,57 @@ export function updateLipSync(vrm: VRM | null, ttsManager: TtsManager) {
 	}
 
 	let usedPhonemeMode = false;
+	const useMfccMode = !!mfccWeights && mfccEnergy > 0.02;
 
 	// wLipSync MFCC mode — real-time phoneme detection from audio signal
-	const mfccWeights = ttsManager.getLipSyncWeights();
-	if (mfccWeights) {
-		// Hybrid: MFCC weights already include volume — just add gentle frequency detail
+	if (useMfccMode) {
+		// Normalize MFCC channels to avoid multiple strong visemes at once.
+		const rawA = clamp01(mfccWeights.A);
+		const rawI = clamp01(mfccWeights.I);
+		const rawU = clamp01(mfccWeights.U);
+		const rawE = clamp01(mfccWeights.E);
+		const rawO = clamp01(mfccWeights.O);
+		const rawTotal = rawA + rawI + rawU + rawE + rawO;
+		const loudness = clamp01(rawTotal);
+		const invTotal = rawTotal > 0.00001 ? 1 / rawTotal : 0;
+
+		targetAa = rawA * invTotal * loudness * 1.45 * phonemeGain + audioAmplitude * 0.18;
+		targetIh = rawI * invTotal * loudness * 1.2 * phonemeGain;
+		targetOu = rawU * invTotal * loudness * 1.15 * phonemeGain;
+		targetEe = rawE * invTotal * loudness * 1.25 * phonemeGain;
+
+		// Keep O subtle and push some energy into ou (rounded lips without "surprised O").
+		const oEnergy = rawO * invTotal * loudness;
+		const oCompressed = Math.pow(clamp01(oEnergy), 1.2);
+		targetOh = oCompressed * 0.34 * phonemeGain;
+		targetOu += oCompressed * 0.24;
+		targetAa *= 1 - oCompressed * 0.16;
+
+		// Hybrid: blend gentle frequency detail on top.
 		const bands = ttsManager.getFrequencyBands();
-
-		// MFCC weights (already scaled by wLipSync volume)
-		targetAa = mfccWeights.A;
-		targetIh = mfccWeights.I;
-		targetOu = mfccWeights.U;
-		targetEe = mfccWeights.E;
-		targetOh = mfccWeights.O;
-
-		// Blend in frequency band hints for subtle detail
 		if (bands) {
 			const { low, midLow, midHigh } = bands;
-			const blend = 0.15;
+			const blend = 0.06;
 			targetAa += low * audioAmplitude * blend;
-			targetOh += (low * 0.4 + midLow * 0.3) * audioAmplitude * blend;
-			targetIh += midLow * audioAmplitude * blend * 0.5;
-			targetEe += midHigh * audioAmplitude * blend * 0.5;
-			targetOu += (midHigh * 0.4 + low * 0.2) * audioAmplitude * blend * 0.5;
+			targetOh += (low * 0.16 + midLow * 0.1) * audioAmplitude * blend;
+			targetIh += midLow * audioAmplitude * blend * 0.6;
+			targetEe += midHigh * audioAmplitude * blend * 0.65;
+			targetOu += (midHigh * 0.45 + low * 0.2) * audioAmplitude * blend * 0.65;
 		}
 
 		// Clamp
-		targetAa = Math.min(targetAa, 1.0);
-		targetIh = Math.min(targetIh, 0.8);
-		targetOu = Math.min(targetOu, 0.8);
-		targetEe = Math.min(targetEe, 0.8);
-		targetOh = Math.min(targetOh, 0.7);
+		targetAa = Math.min(targetAa, 0.95);
+		targetIh = Math.min(targetIh, 0.72);
+		targetOu = Math.min(targetOu, 0.7);
+		targetEe = Math.min(targetEe, 0.75);
+		targetOh = Math.min(targetOh, 0.36);
 
 		usedPhonemeMode = true;
 	}
 
 	// Phoneme mode (Kokoro — has word boundaries + phoneme data)
-	if (hasValidTiming && currentWordBoundary && ttsManager.currentPhonemes) {
+	// MFCC must stay authoritative when available to avoid timing drift.
+	if (!useMfccMode && hasValidTiming && currentWordBoundary && ttsManager.currentPhonemes) {
 		let wordPhonemes = '';
 		if (Array.isArray(ttsManager.currentPhonemes)) {
 			if (wordIndex >= 0 && wordIndex < ttsManager.currentPhonemes.length) {
@@ -207,25 +237,25 @@ export function updateLipSync(vrm: VRM | null, ttsManager: TtsManager) {
 				}
 
 				const blendMap = PHONEME_TO_BLEND_SHAPE[phonemeKey] || {};
-				targetAa = blendMap.aa || 0;
-				targetIh = blendMap.ih || 0;
-				targetOu = blendMap.ou || 0;
-				targetEe = blendMap.ee || 0;
-				targetOh = blendMap.oh || 0;
+				targetAa = (blendMap.aa || 0) * phonemeGain;
+				targetIh = (blendMap.ih || 0) * phonemeGain;
+				targetOu = (blendMap.ou || 0) * phonemeGain;
+				targetEe = (blendMap.ee || 0) * phonemeGain;
+				targetOh = (blendMap.oh || 0) * phonemeGain;
 
 				const hasMapping =
 					targetAa > 0 || targetIh > 0 || targetOu > 0 || targetEe > 0 || targetOh > 0;
 
 				if (hasMapping) {
-					const effectiveAmplitude = Math.max(audioAmplitude, 0.3);
-					const amplitudeMultiplier = Math.min(effectiveAmplitude * 2.0, 1.0);
-					targetAa = Math.min(targetAa * amplitudeMultiplier + effectiveAmplitude * 0.5, 1.0);
-					targetIh = Math.min(targetIh * amplitudeMultiplier + effectiveAmplitude * 0.3, 1.0);
-					targetOu = Math.min(targetOu * amplitudeMultiplier + effectiveAmplitude * 0.3, 1.0);
-					targetEe = Math.min(targetEe * amplitudeMultiplier + effectiveAmplitude * 0.3, 1.0);
-					targetOh = Math.min(targetOh * amplitudeMultiplier + effectiveAmplitude * 0.3, 1.0);
-					if (targetAa + targetIh + targetOu + targetEe + targetOh < 0.2) {
-						targetAa = Math.max(targetAa, effectiveAmplitude * 0.5);
+					const effectiveAmplitude = Math.max(audioAmplitude, 0.22);
+					const amplitudeMultiplier = Math.min(effectiveAmplitude * 1.7, 1.0);
+					targetAa = Math.min(targetAa * amplitudeMultiplier + effectiveAmplitude * 0.24, 0.95);
+					targetIh = Math.min(targetIh * amplitudeMultiplier + effectiveAmplitude * 0.15, 0.8);
+					targetOu = Math.min(targetOu * amplitudeMultiplier + effectiveAmplitude * 0.15, 0.72);
+					targetEe = Math.min(targetEe * amplitudeMultiplier + effectiveAmplitude * 0.15, 0.8);
+					targetOh = Math.min(targetOh * amplitudeMultiplier + effectiveAmplitude * 0.1, 0.42);
+					if (targetAa + targetIh + targetOu + targetEe + targetOh < 0.12) {
+						targetAa = Math.max(targetAa, effectiveAmplitude * 0.3);
 					}
 					usedPhonemeMode = true;
 				}
@@ -257,8 +287,8 @@ export function updateLipSync(vrm: VRM | null, ttsManager: TtsManager) {
 				// aa: jaw open — dominated by low frequencies (open vowels like "ah", "aah")
 				targetAa = Math.min(nLow * 1.4 * audioAmplitude * 2.0, 1.0);
 
-				// oh: rounded lips — low + some mid (vowels like "oh", "oo")
-				targetOh = Math.min((nLow * 0.5 + nMidLow * 0.5) * audioAmplitude * 1.6, 0.8);
+				// oh: keep subtle and share roundness with ou.
+				targetOh = Math.min((nLow * 0.35 + nMidLow * 0.2) * audioAmplitude * 1.3, 0.38);
 
 				// ih: slight open — mid frequencies (vowels like "ih", "eh")
 				targetIh = Math.min((nMidLow * 0.8 + nHigh * 0.4) * audioAmplitude * 1.6, 0.7);
@@ -267,7 +297,15 @@ export function updateLipSync(vrm: VRM | null, ttsManager: TtsManager) {
 				targetEe = Math.min(nMidHigh * 1.2 * audioAmplitude * 1.8, 0.7);
 
 				// ou: rounded/pursed — mid balance (vowels like "oo", "ou")
-				targetOu = Math.min((nMidHigh * 0.6 + nLow * 0.3) * audioAmplitude * 1.4, 0.6);
+				targetOu = Math.min((nMidHigh * 0.62 + nLow * 0.28) * audioAmplitude * 1.45 + targetOh * 0.28, 0.68);
+
+				// Small cyclical redistribution across all 5 visemes for less robotic motion.
+				const cycle = Math.sin(currentTime * 4.2) * 0.5 + 0.5;
+				if (cycle < 0.2) targetAa *= 1.08;
+				else if (cycle < 0.4) targetIh += audioAmplitude * 0.05;
+				else if (cycle < 0.6) targetOu += audioAmplitude * 0.05;
+				else if (cycle < 0.8) targetEe += audioAmplitude * 0.05;
+				else targetOh += audioAmplitude * 0.03;
 
 				// Ensure minimum mouth movement when audio is playing
 				if (targetAa + targetIh + targetOu + targetEe + targetOh < 0.15) {
@@ -284,8 +322,31 @@ export function updateLipSync(vrm: VRM | null, ttsManager: TtsManager) {
 		}
 	}
 
+	// Global anti-"surprised O" shaping:
+	// keep roundness, but avoid exaggerated circular mouth.
+	if (targetOh > 0) {
+		const oSoft = Math.pow(clamp01(targetOh), 1.2);
+		const maxOh = 0.3 + audioAmplitude * 0.14;
+		targetOh = Math.min(oSoft, maxOh);
+		targetOu = Math.min(targetOu + targetOh * 0.34, 0.74);
+		targetAa *= 1 - targetOh * 0.18;
+		targetEe *= 1 - targetOh * 0.45;
+
+		const roundTotal = targetOh + targetOu;
+		const roundCap = 0.62 + audioAmplitude * 0.12;
+		if (roundTotal > roundCap) {
+			const scale = roundCap / roundTotal;
+			targetOh *= scale;
+			targetOu *= scale;
+		}
+	}
+
 	// Smooth transitions — higher value = smoother/slower mouth movement
-	const smoothing = mfccWeights ? 0.1 : usedPhonemeMode ? 0.25 : 0.35;
+	const smoothing = useMfccMode
+		? Math.max(0.45, MOUTH_SMOOTHING - 0.08)
+		: usedPhonemeMode
+			? MOUTH_SMOOTHING
+			: Math.min(0.7, MOUTH_SMOOTHING + 0.06);
 	const smoothedAa = previousAa + (targetAa - previousAa) * (1 - smoothing);
 	const smoothedIh = previousIh + (targetIh - previousIh) * (1 - smoothing);
 	const smoothedOu = previousOu + (targetOu - previousOu) * (1 - smoothing);

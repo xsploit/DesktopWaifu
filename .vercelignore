@@ -1,0 +1,20 @@
+# Build/system artifacts
+node_modules/
+.svelte-kit/
+build/
+.vercel/
+.netlify/
+
+# Local tooling / metadata
+.git/
+.claude/
+.code-review/
+
+# Local-only heavy projects and references
+Qwen3-TTS-streaming/
+wLipSync-main/
+
+# Local test scripts
+test_replicate_chat.py
+test_replicate_chunked.py
+test_replicate_tts.py

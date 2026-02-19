@@ -90,6 +90,13 @@ export class TtsManager {
 	fishSampleRate = 24000;
 	qwenEndpoint = 'http://localhost:8880';
 	qwenLanguage = 'English';
+	qwenVoiceId = '';
+	qwenLatencyMode: 'fast' | 'balanced' | 'quality' = 'fast';
+	qwenEmitEveryFrames: number | null = null;
+	qwenDecodeWindowFrames: number | null = null;
+	qwenOverlapSamples: number | null = null;
+	qwenMaxFrames: number | null = null;
+	qwenUseOptimizedDecode: boolean | null = null;
 	qwenSampleRate = 24000;
 	enableTts = true;
 
@@ -152,7 +159,7 @@ export class TtsManager {
 		this.audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
 		this.audioAnalyser = this.audioContext.createAnalyser();
 		this.audioAnalyser.fftSize = 256;
-		this.audioAnalyser.smoothingTimeConstant = 0.3;
+		this.audioAnalyser.smoothingTimeConstant = 0.16;
 		this._analyserConnected = false;
 		this.audioDataArray = new Uint8Array(this.audioAnalyser.frequencyBinCount) as Uint8Array<ArrayBuffer>;
 		await this._initLipSyncNode();
@@ -171,8 +178,8 @@ export class TtsManager {
 			const { createWLipSyncNode } = await import('wlipsync');
 			this.lipsyncNode = await createWLipSyncNode(this.audioContext, _wlipsyncProfile!);
 			// wLipSync is analysis-only (no audio output) — don't chain it into playback path
-			this.lipsyncNode.smoothness = 0.02;  // Faster than default 0.05 — less internal lag
-			this.lipsyncNode.blockSize = 256;     // Faster updates (256 samples vs default 512)
+			this.lipsyncNode.smoothness = 0.06;  // Lower internal lag while staying stable
+			this.lipsyncNode.blockSize = 256;     // Faster MFCC update cadence
 			console.log('[TtsManager] wLipSync MFCC node created');
 		} catch (err) {
 			console.warn('[TtsManager] wLipSync init failed, using frequency-band fallback:', err);
@@ -585,14 +592,13 @@ export class TtsManager {
 		const controller = new AbortController();
 		this._qwenAbortControllers.add(controller);
 		try {
+			const payload = this._buildQwenPayload(text);
+
 			const response = await fetch(`${endpoint}/v1/tts/stream`, {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
 				signal: controller.signal,
-				body: JSON.stringify({
-					text,
-					language: this.qwenLanguage || 'English'
-				})
+				body: JSON.stringify(payload)
 			});
 			if (!response.ok) {
 				const err = await response.json().catch(async () => ({ error: await response.text() }));
@@ -747,19 +753,47 @@ export class TtsManager {
 		return withScheme.replace(/\/+$/, '');
 	}
 
+	_buildQwenPayload(text: string): Record<string, unknown> {
+		const payload: Record<string, unknown> = {
+			text,
+			language: this.qwenLanguage || 'English',
+			latency_mode: this.qwenLatencyMode
+		};
+
+		const voiceId = this.qwenVoiceId.trim();
+		if (voiceId) payload.voice_id = voiceId;
+
+		if (this.qwenEmitEveryFrames !== null && Number.isFinite(this.qwenEmitEveryFrames) && this.qwenEmitEveryFrames > 0) {
+			payload.emit_every_frames = Math.floor(this.qwenEmitEveryFrames);
+		}
+		if (this.qwenDecodeWindowFrames !== null && Number.isFinite(this.qwenDecodeWindowFrames) && this.qwenDecodeWindowFrames >= 8) {
+			payload.decode_window_frames = Math.floor(this.qwenDecodeWindowFrames);
+		}
+		if (this.qwenOverlapSamples !== null && Number.isFinite(this.qwenOverlapSamples) && this.qwenOverlapSamples >= 0) {
+			payload.overlap_samples = Math.floor(this.qwenOverlapSamples);
+		}
+		if (this.qwenMaxFrames !== null && Number.isFinite(this.qwenMaxFrames) && this.qwenMaxFrames >= 64) {
+			payload.max_frames = Math.floor(this.qwenMaxFrames);
+		}
+		if (this.qwenUseOptimizedDecode !== null) {
+			payload.use_optimized_decode = this.qwenUseOptimizedDecode;
+		}
+
+		return payload;
+	}
+
 	async _streamQwenText(text: string) {
 		const endpoint = this._normalizeQwenEndpoint();
 		const controller = new AbortController();
 		this._qwenAbortControllers.add(controller);
 		try {
+			const payload = this._buildQwenPayload(text);
+
 			const response = await fetch(`${endpoint}/v1/tts/stream`, {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
 				signal: controller.signal,
-				body: JSON.stringify({
-					text,
-					language: this.qwenLanguage || 'English'
-				})
+				body: JSON.stringify(payload)
 			});
 			if (!response.ok) {
 				const err = await response.json().catch(async () => ({ error: await response.text() }));

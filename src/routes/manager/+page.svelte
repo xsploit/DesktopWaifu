@@ -5,6 +5,7 @@
 	import ApiKeysSection from '$lib/components/manager/ApiKeysSection.svelte';
 	import LlmModelsSection from '$lib/components/manager/LlmModelsSection.svelte';
 	import FishVoicesSection from '$lib/components/manager/FishVoicesSection.svelte';
+	import QwenVoicesSection from '$lib/components/manager/QwenVoicesSection.svelte';
 	import MemorySection from '$lib/components/manager/MemorySection.svelte';
 	import ConversationsSection from '$lib/components/manager/ConversationsSection.svelte';
 	import DataManagementSection from '$lib/components/manager/DataManagementSection.svelte';
@@ -16,6 +17,7 @@
 	let providerDefaults = $state<Record<string, ProviderDefaults>>({});
 	let fishApiKey = $state('');
 	let qwenEndpoint = $state('http://localhost:8880');
+	let qwenVoiceId = $state('');
 	let fishSavedVoices = $state<{ id: string; name: string }[]>([]);
 	let fishModel = $state('s1');
 	let fishVoiceId = $state('');
@@ -36,6 +38,11 @@
 	let saveTimer: ReturnType<typeof setTimeout> | null = null;
 
 	onMount(() => {
+		const htmlEl = document.documentElement;
+		const bodyEl = document.body;
+		htmlEl.classList.add('manager-route');
+		bodyEl.classList.add('manager-route');
+
 		storage.initialize().then(async () => {
 			try {
 				const state = await storage.loadAppState();
@@ -46,6 +53,7 @@
 				if (state.tts) {
 					fishApiKey = state.tts.fishApiKey || '';
 					qwenEndpoint = state.tts.qwenEndpoint || 'http://localhost:8880';
+					qwenVoiceId = state.tts.qwenVoiceId || '';
 					fishSavedVoices = state.tts.fishSavedVoices || [];
 					fishModel = state.tts.fishModel || 's1';
 					fishVoiceId = state.tts.fishVoiceId || '';
@@ -88,6 +96,15 @@
 				loaded = true;
 			}
 		});
+
+		return () => {
+			htmlEl.classList.remove('manager-route');
+			bodyEl.classList.remove('manager-route');
+			if (saveTimer) {
+				clearTimeout(saveTimer);
+				saveTimer = null;
+			}
+		};
 	});
 
 	function debouncedSave() {
@@ -111,6 +128,7 @@
 
 			await storage.setSetting('tts.fishApiKey', fishApiKey);
 			await storage.setSetting('tts.qwenEndpoint', qwenEndpoint);
+			await storage.setSetting('tts.qwenVoiceId', qwenVoiceId);
 			await storage.setSetting('tts.fishSavedVoices', $state.snapshot(fishSavedVoices));
 			await storage.setSetting('tts.fishModel', fishModel);
 			await storage.setSetting('tts.fishVoiceId', fishVoiceId);
@@ -141,6 +159,7 @@
 		const _latency = fishLatency;
 		const _key = fishApiKey;
 		const _qwenEndpoint = qwenEndpoint;
+		const _qwenVoiceId = qwenVoiceId;
 		const _memEnabled = memoryEnabled;
 		const _memMode = memoryMode;
 		const _memMax = memoryMaxContext;
@@ -194,6 +213,11 @@
 				bind:fishLatency
 			/>
 
+			<QwenVoicesSection
+				{qwenEndpoint}
+				bind:qwenVoiceId
+			/>
+
 			<MemorySection
 				bind:enabled={memoryEnabled}
 				bind:mode={memoryMode}
@@ -216,10 +240,18 @@
 
 <style>
 	.manager-page {
-		min-height: 100vh;
+		height: 100dvh;
 		background: #02040a;
 		color: var(--text-main, #e6edf3);
 		overflow-y: auto;
+		-webkit-overflow-scrolling: touch;
+	}
+	:global(html.manager-route),
+	:global(body.manager-route) {
+		position: static !important;
+		overflow: auto !important;
+		height: auto !important;
+		min-height: 100dvh;
 	}
 	.manager-header {
 		display: flex;
