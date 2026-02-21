@@ -208,6 +208,13 @@ let ttsFishLatency = $state<'normal' | 'balanced'>('balanced');
 let ttsQwenEndpoint = $state('http://localhost:8880');
 let ttsQwenLanguage = $state('English');
 let ttsQwenVoiceId = $state('');
+let ttsQwenQualityPreset = $state<'fast' | 'balanced' | 'quality' | 'custom'>('fast');
+let ttsQwenLatencyMode = $state<'fast' | 'balanced' | 'quality'>('fast');
+let ttsQwenEmitEveryFrames = $state<number | null>(null);
+let ttsQwenDecodeWindowFrames = $state<number | null>(null);
+let ttsQwenOverlapSamples = $state<number | null>(null);
+let ttsQwenMaxFrames = $state<number | null>(null);
+let ttsQwenUseOptimizedDecode = $state<boolean | null>(null);
 let ttsEnabled = $state(true);
 let fishApiKey = $state('');
 let kokoroReady = $state(false);
@@ -235,6 +242,20 @@ export function getTtsSettings() {
 		set qwenLanguage(v: string) { ttsQwenLanguage = v; },
 		get qwenVoiceId() { return ttsQwenVoiceId; },
 		set qwenVoiceId(v: string) { ttsQwenVoiceId = v; },
+		get qwenQualityPreset() { return ttsQwenQualityPreset; },
+		set qwenQualityPreset(v: 'fast' | 'balanced' | 'quality' | 'custom') { ttsQwenQualityPreset = v; },
+		get qwenLatencyMode() { return ttsQwenLatencyMode; },
+		set qwenLatencyMode(v: 'fast' | 'balanced' | 'quality') { ttsQwenLatencyMode = v; },
+		get qwenEmitEveryFrames() { return ttsQwenEmitEveryFrames; },
+		set qwenEmitEveryFrames(v: number | null) { ttsQwenEmitEveryFrames = v; },
+		get qwenDecodeWindowFrames() { return ttsQwenDecodeWindowFrames; },
+		set qwenDecodeWindowFrames(v: number | null) { ttsQwenDecodeWindowFrames = v; },
+		get qwenOverlapSamples() { return ttsQwenOverlapSamples; },
+		set qwenOverlapSamples(v: number | null) { ttsQwenOverlapSamples = v; },
+		get qwenMaxFrames() { return ttsQwenMaxFrames; },
+		set qwenMaxFrames(v: number | null) { ttsQwenMaxFrames = v; },
+		get qwenUseOptimizedDecode() { return ttsQwenUseOptimizedDecode; },
+		set qwenUseOptimizedDecode(v: boolean | null) { ttsQwenUseOptimizedDecode = v; },
 		get enabled() { return ttsEnabled; },
 		set enabled(v: boolean) { ttsEnabled = v; },
 		get fishApiKey() { return fishApiKey; },

@@ -295,6 +295,26 @@ export class StorageManager {
 		console.log('[StorageManager] All embeddings cleared');
 	}
 
+	async deleteEmbeddingsByConversationRange(
+		conversationId: number,
+		startMessageIndex: number,
+		endMessageIndex: number
+	): Promise<number> {
+		const entries = await this.getEmbeddingsByConversation(conversationId);
+		let deleted = 0;
+		for (const entry of entries) {
+			if (
+				entry.id !== undefined &&
+				entry.messageIndex >= startMessageIndex &&
+				entry.messageIndex <= endMessageIndex
+			) {
+				await this.delete('embeddings', entry.id);
+				deleted++;
+			}
+		}
+		return deleted;
+	}
+
 	// Summaries (memory system)
 	async saveSummary(entry: Omit<SummaryEntry, 'id'>) {
 		return this.put('summaries', entry);
@@ -311,6 +331,24 @@ export class StorageManager {
 	async clearSummaries() {
 		await this.clearStore('summaries');
 		console.log('[StorageManager] All summaries cleared');
+	}
+
+	async deleteSummariesByConversationRange(
+		conversationId: number,
+		startMessageIndex: number,
+		endMessageIndex: number
+	): Promise<number> {
+		const summaries = await this.getSummariesByConversation(conversationId);
+		let deleted = 0;
+		for (const summary of summaries) {
+			const [start, end] = summary.messageRange;
+			const overlaps = start <= endMessageIndex && end >= startMessageIndex;
+			if (overlaps && summary.id !== undefined) {
+				await this.delete('summaries', summary.id);
+				deleted++;
+			}
+		}
+		return deleted;
 	}
 
 	// Bulk save/load
@@ -349,6 +387,13 @@ export class StorageManager {
 			await this.setSetting('tts.qwenEndpoint', tts.qwenEndpoint ?? 'http://localhost:8880');
 			await this.setSetting('tts.qwenLanguage', tts.qwenLanguage ?? 'English');
 			await this.setSetting('tts.qwenVoiceId', tts.qwenVoiceId ?? '');
+			await this.setSetting('tts.qwenQualityPreset', tts.qwenQualityPreset ?? 'fast');
+			await this.setSetting('tts.qwenLatencyMode', tts.qwenLatencyMode ?? 'fast');
+			await this.setSetting('tts.qwenEmitEveryFrames', tts.qwenEmitEveryFrames ?? null);
+			await this.setSetting('tts.qwenDecodeWindowFrames', tts.qwenDecodeWindowFrames ?? null);
+			await this.setSetting('tts.qwenOverlapSamples', tts.qwenOverlapSamples ?? null);
+			await this.setSetting('tts.qwenMaxFrames', tts.qwenMaxFrames ?? null);
+			await this.setSetting('tts.qwenUseOptimizedDecode', tts.qwenUseOptimizedDecode ?? null);
 			await this.setSetting('tts.fishApiKey', tts.fishApiKey);
 			await this.setSetting('tts.enabled', tts.enabled);
 			await this.setSetting('tts.fishModel', tts.fishModel);
@@ -435,6 +480,13 @@ export class StorageManager {
 				qwenEndpoint: await this.getSetting('tts.qwenEndpoint', 'http://localhost:8880'),
 				qwenLanguage: await this.getSetting('tts.qwenLanguage', 'English'),
 				qwenVoiceId: await this.getSetting('tts.qwenVoiceId', ''),
+				qwenQualityPreset: await this.getSetting('tts.qwenQualityPreset', 'fast'),
+				qwenLatencyMode: await this.getSetting('tts.qwenLatencyMode', 'fast'),
+				qwenEmitEveryFrames: await this.getSetting('tts.qwenEmitEveryFrames', null),
+				qwenDecodeWindowFrames: await this.getSetting('tts.qwenDecodeWindowFrames', null),
+				qwenOverlapSamples: await this.getSetting('tts.qwenOverlapSamples', null),
+				qwenMaxFrames: await this.getSetting('tts.qwenMaxFrames', null),
+				qwenUseOptimizedDecode: await this.getSetting('tts.qwenUseOptimizedDecode', null),
 				fishApiKey: (await this.getSetting('tts.fishApiKey', '')) || (await this.getSetting('tts.apiKey', '')),
 				enabled: await this.getSetting('tts.enabled', true),
 				fishModel: await this.getSetting('tts.fishModel', 's1'),

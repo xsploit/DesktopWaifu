@@ -83,6 +83,52 @@
 		{ value: 'auto', label: 'Auto Detect' }
 	];
 	const qwenLanguageOptions = ['Auto', 'English', 'Chinese', 'Japanese', 'Korean', 'Spanish', 'French', 'German'];
+	type QwenQualityPreset = 'fast' | 'balanced' | 'quality' | 'custom';
+	type QwenLatencyModeSetting = 'fast' | 'balanced' | 'quality';
+	const qwenPresetConfigs: Record<
+		Exclude<QwenQualityPreset, 'custom'>,
+		{
+			label: string;
+			description: string;
+			latencyMode: QwenLatencyModeSetting;
+			emitEveryFrames: number;
+			decodeWindowFrames: number;
+			overlapSamples: number;
+			maxFrames: number;
+			useOptimizedDecode: boolean;
+		}
+	> = {
+		fast: {
+			label: 'Fast',
+			description: 'Lowest latency for interactive chat.',
+			latencyMode: 'fast',
+			emitEveryFrames: 6,
+			decodeWindowFrames: 20,
+			overlapSamples: 256,
+			maxFrames: 2048,
+			useOptimizedDecode: true
+		},
+		balanced: {
+			label: 'Balanced',
+			description: 'Middle ground between speed and stability.',
+			latencyMode: 'balanced',
+			emitEveryFrames: 8,
+			decodeWindowFrames: 28,
+			overlapSamples: 384,
+			maxFrames: 4096,
+			useOptimizedDecode: true
+		},
+		quality: {
+			label: 'Quality',
+			description: 'Higher stability/quality with added latency.',
+			latencyMode: 'quality',
+			emitEveryFrames: 12,
+			decodeWindowFrames: 40,
+			overlapSamples: 640,
+			maxFrames: 8192,
+			useOptimizedDecode: false
+		}
+	};
 
 	let isMobile = $state(false);
 	if (typeof window !== 'undefined') {
@@ -92,8 +138,18 @@
 	let showFishKey = $derived(tts.provider === 'fish');
 	let showKokoroOptions = $derived(tts.provider === 'kokoro');
 	let showQwenOptions = $derived(tts.provider === 'qwen');
+	let qwenPresetDescription = $derived(
+		tts.qwenQualityPreset === 'custom'
+			? 'Custom parameters'
+			: qwenPresetConfigs[tts.qwenQualityPreset]?.description ?? 'Preset not configured'
+	);
 	let qwenStatus = $state<'idle' | 'checking' | 'ready' | 'error'>('idle');
 	let qwenStatusText = $state('Not checked');
+	type QwenVoicePreset = { id: string; name: string; active?: boolean };
+	let qwenVoices = $state<QwenVoicePreset[]>([]);
+	let qwenVoicesLoading = $state(false);
+	let qwenVoicesStatus = $state('Not loaded');
+	let qwenVoicesEndpoint = $state('');
 
 	// Fish Audio state
 	let fishModels = $state<{ id: string; name: string; author?: string }[]>([]);
@@ -202,10 +258,91 @@
 		if (result.ok) {
 			qwenStatus = 'ready';
 			qwenStatusText = 'Ready';
+			await loadQwenVoices(false);
 		} else {
 			qwenStatus = 'error';
 			qwenStatusText = result.message;
 		}
+	}
+
+	async function loadQwenVoices(showToast = true) {
+		const endpoint = tts.qwenEndpoint.trim();
+		if (!endpoint) {
+			qwenVoices = [];
+			qwenVoicesStatus = 'Missing endpoint';
+			if (showToast) toast('Set Qwen endpoint first');
+			return;
+		}
+
+		qwenVoicesLoading = true;
+		qwenVoicesStatus = 'Loading...';
+		ttsManager.qwenEndpoint = tts.qwenEndpoint;
+		const result = await ttsManager.getQwenVoices();
+
+		if (result.error) {
+			qwenVoices = [];
+			qwenVoicesStatus = `Load failed: ${result.error}`;
+			if (showToast) toast(`Qwen voices load failed: ${result.error}`);
+			qwenVoicesLoading = false;
+			return;
+		}
+
+		qwenVoices = result.items.map((voice) => ({
+			id: voice.id,
+			name: voice.name,
+			active: Boolean(voice.active)
+		}));
+		qwenVoicesEndpoint = endpoint;
+
+		if (!tts.qwenVoiceId && result.activeVoiceId) {
+			tts.qwenVoiceId = result.activeVoiceId;
+		}
+
+		qwenVoicesStatus = qwenVoices.length > 0
+			? `Loaded ${qwenVoices.length} preset(s)`
+			: 'No presets found on server';
+		if (showToast) toast(qwenVoicesStatus);
+		qwenVoicesLoading = false;
+	}
+
+	$effect(() => {
+		if (!showQwenOptions) return;
+		const endpoint = tts.qwenEndpoint.trim();
+		if (!endpoint) {
+			qwenVoices = [];
+			qwenVoicesStatus = 'Missing endpoint';
+			qwenVoicesEndpoint = '';
+			return;
+		}
+		if (endpoint === qwenVoicesEndpoint && qwenVoices.length > 0) {
+			return;
+		}
+		const timer = setTimeout(() => {
+			void loadQwenVoices(false);
+		}, 250);
+		return () => clearTimeout(timer);
+	});
+
+	function applyQwenPreset(preset: Exclude<QwenQualityPreset, 'custom'>) {
+		const config = qwenPresetConfigs[preset];
+		tts.qwenQualityPreset = preset;
+		tts.qwenLatencyMode = config.latencyMode;
+		tts.qwenEmitEveryFrames = config.emitEveryFrames;
+		tts.qwenDecodeWindowFrames = config.decodeWindowFrames;
+		tts.qwenOverlapSamples = config.overlapSamples;
+		tts.qwenMaxFrames = config.maxFrames;
+		tts.qwenUseOptimizedDecode = config.useOptimizedDecode;
+		toast(`Qwen preset applied: ${config.label}`);
+	}
+
+	function onQwenPresetChange(e: Event) {
+		const preset = (e.target as HTMLSelectElement).value as QwenQualityPreset;
+		if (preset === 'custom') {
+			tts.qwenQualityPreset = 'custom';
+			toast('Qwen preset set to custom');
+			return;
+		}
+		applyQwenPreset(preset);
 	}
 
 	function onVoiceChange(e: Event) {
@@ -278,6 +415,12 @@
 				ttsManager.qwenEndpoint = tts.qwenEndpoint;
 				ttsManager.qwenLanguage = tts.qwenLanguage;
 				ttsManager.qwenVoiceId = tts.qwenVoiceId;
+				ttsManager.qwenLatencyMode = tts.qwenLatencyMode;
+				ttsManager.qwenEmitEveryFrames = tts.qwenEmitEveryFrames;
+				ttsManager.qwenDecodeWindowFrames = tts.qwenDecodeWindowFrames;
+				ttsManager.qwenOverlapSamples = tts.qwenOverlapSamples;
+				ttsManager.qwenMaxFrames = tts.qwenMaxFrames;
+				ttsManager.qwenUseOptimizedDecode = tts.qwenUseOptimizedDecode;
 			}
 			ttsManager.enableTts = true;
 			if (!ttsManager.audioContext) await ttsManager.initialize();
@@ -444,9 +587,41 @@
 	</div>
 
 	<div class="control-group">
+		<div class="control-label">Qwen Quality Preset</div>
+		<select class="select-tech" bind:value={tts.qwenQualityPreset} onchange={onQwenPresetChange}>
+			<option value="fast">Fast (low latency)</option>
+			<option value="balanced">Balanced</option>
+			<option value="quality">Quality (higher latency)</option>
+			<option value="custom">Custom</option>
+		</select>
+		<small class="hint">{qwenPresetDescription}</small>
+		<small class="hint">
+			Current: mode={tts.qwenLatencyMode}, emit={tts.qwenEmitEveryFrames ?? 'default'},
+			decode={tts.qwenDecodeWindowFrames ?? 'default'}, overlap={tts.qwenOverlapSamples ?? 'default'},
+			max={tts.qwenMaxFrames ?? 'default'}, optimized={tts.qwenUseOptimizedDecode === null ? 'default' : (tts.qwenUseOptimizedDecode ? 'true' : 'false')}
+		</small>
+	</div>
+
+	<div class="control-group">
+		<div class="control-label">Qwen Voice Preset</div>
+		<div class="ref-audio-row">
+			<button class="btn-init" onclick={() => loadQwenVoices()} disabled={qwenVoicesLoading || qwenStatus === 'checking'}>
+				{qwenVoicesLoading ? 'Loading...' : 'Load Voices'}
+			</button>
+			<select class="select-tech" style="flex:1" bind:value={tts.qwenVoiceId} disabled={qwenVoicesLoading}>
+				<option value="">Server Active (Default)</option>
+				{#each qwenVoices as voice}
+					<option value={voice.id}>{voice.name}{voice.active ? ' (active)' : ''}</option>
+				{/each}
+			</select>
+		</div>
+		<small class="hint">{qwenVoicesStatus}</small>
+	</div>
+
+	<div class="control-group">
 		<div class="control-label">Qwen Voice ID</div>
 		<input type="text" class="input-tech" bind:value={tts.qwenVoiceId} placeholder="Preset ID from manager (optional)" />
-		<small class="hint">Manage/upload voices in Manager. Empty uses server default active voice.</small>
+		<small class="hint">Advanced/manual override. Empty uses server default active voice.</small>
 	</div>
 
 	<div class="control-group">

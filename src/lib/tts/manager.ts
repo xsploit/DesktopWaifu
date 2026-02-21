@@ -31,6 +31,7 @@ export interface VoiceInfo {
 	gender?: string;
 	author?: string;
 	language?: string;
+	active?: boolean;
 }
 
 type KokoroDtype = 'fp32' | 'fp16' | 'q8' | 'q4' | 'q4f16';
@@ -1399,6 +1400,34 @@ export class TtsManager {
 		}
 	}
 
+	async getQwenVoices(): Promise<{ items: VoiceInfo[]; activeVoiceId: string; error?: string }> {
+		const endpoint = this._normalizeQwenEndpoint();
+		try {
+			const response = await fetch(`${endpoint}/v1/voices`);
+			const data = await response.json().catch(() => ({}));
+			if (!response.ok) {
+				const error = data?.detail || data?.error || `HTTP ${response.status}`;
+				return { items: [], activeVoiceId: '', error };
+			}
+			const items = Array.isArray(data?.items) ? data.items : [];
+			const mapped = items.map((voice: any) => ({
+				id: String(voice?.id ?? ''),
+				name: String(voice?.name ?? voice?.id ?? 'Unnamed voice'),
+				active: Boolean(voice?.active),
+				language: voice?.language ? String(voice.language) : undefined
+			})).filter((voice: VoiceInfo) => voice.id.length > 0);
+			const activeVoiceId = String(
+				data?.active_voice_id ??
+				mapped.find((voice: VoiceInfo) => voice.active)?.id ??
+				''
+			);
+			return { items: mapped, activeVoiceId };
+		} catch (err) {
+			const error = err instanceof Error ? err.message : String(err);
+			return { items: [], activeVoiceId: '', error };
+		}
+	}
+
 	getKokoroVoices(): VoiceInfo[] {
 		return Object.entries(KOKORO_VOICES).map(([id, info]) => ({
 			id,
@@ -1415,7 +1444,7 @@ export class TtsManager {
 			case 'fish':
 				return this.getFishVoices();
 			case 'qwen':
-				return [];
+				return (await this.getQwenVoices()).items;
 			default:
 				return [];
 		}

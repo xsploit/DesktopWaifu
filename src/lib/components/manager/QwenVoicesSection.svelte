@@ -30,6 +30,7 @@
 	let uploadActivate = $state(true);
 	let uploading = $state(false);
 	let uploadFileInput = $state<HTMLInputElement | null>(null);
+	let showUploadModal = $state(false);
 
 	let pathName = $state('');
 	let pathAudio = $state('');
@@ -42,6 +43,21 @@
 	let manualVoiceId = $state('');
 
 	let refreshTimer: ReturnType<typeof setTimeout> | null = null;
+
+	function openUploadModal() {
+		showUploadModal = true;
+	}
+
+	function closeUploadModal() {
+		if (uploading) return;
+		showUploadModal = false;
+	}
+
+	function onModalBackdropClick(event: MouseEvent) {
+		if (event.target === event.currentTarget) {
+			closeUploadModal();
+		}
+	}
 
 	function normalizeEndpoint(): string {
 		const raw = (qwenEndpoint || 'http://localhost:8880').trim();
@@ -193,6 +209,7 @@
 			uploadRefText = '';
 			uploadXVectorOnly = false;
 			if (uploadFileInput) uploadFileInput.value = '';
+			showUploadModal = false;
 			statusMsg = `Uploaded voice: ${data?.voice?.name || selectedId || 'ok'}`;
 			await refresh();
 		} catch (e: any) {
@@ -275,10 +292,28 @@
 	$effect(() => {
 		manualVoiceId = qwenVoiceId || '';
 	});
+
+	$effect(() => {
+		if (typeof document === 'undefined' || !showUploadModal) return;
+		const previousOverflow = document.body.style.overflow;
+		document.body.style.overflow = 'hidden';
+		return () => {
+			document.body.style.overflow = previousOverflow;
+		};
+	});
 </script>
 
+<svelte:window onkeydown={(event) => {
+	if (event.key === 'Escape' && showUploadModal) {
+		closeUploadModal();
+	}
+}} />
+
 <div class="section-card">
-	<h2 class="section-title">Qwen Voice Presets</h2>
+	<div class="section-header">
+		<h2 class="section-title">Qwen Voice Presets</h2>
+		<button class="btn-init" onclick={openUploadModal}>Upload Voice</button>
+	</div>
 
 	<div class="sub-section">
 		<div class="row">
@@ -333,25 +368,11 @@
 	</div>
 
 	<div class="sub-section">
-		<h3 class="sub-title">Upload New Voice</h3>
-		<input type="text" class="input-tech" bind:value={uploadName} placeholder="Voice name..." />
-		<input type="text" class="input-tech" bind:value={uploadRefText} placeholder="Reference text (optional)" />
-		<div class="toggle-row">
-			<label>
-				<input type="checkbox" bind:checked={uploadXVectorOnly} />
-				x_vector_only_mode
-			</label>
-			<label>
-				<input type="checkbox" bind:checked={uploadActivate} />
-				activate
-			</label>
-		</div>
 		<div class="row">
-			<input type="file" accept="audio/*,.wav,.mp3,.flac,.m4a" bind:this={uploadFileInput} />
-			<button class="btn-tech" onclick={uploadVoice} disabled={uploading}>
-				{uploading ? 'Uploading...' : 'Upload Voice'}
-			</button>
+			<h3 class="sub-title">Upload New Voice</h3>
+			<button class="btn-init" onclick={openUploadModal}>Open Upload</button>
 		</div>
+		<small class="hint">Upload opens in a modal so it stays usable on small screens.</small>
 	</div>
 
 	<div class="sub-section">
@@ -380,6 +401,38 @@
 	{/if}
 </div>
 
+{#if showUploadModal}
+	<div class="modal-backdrop" onclick={onModalBackdropClick} role="presentation">
+		<div class="modal-panel" role="dialog" aria-modal="true" aria-labelledby="qwen-upload-title">
+			<div class="modal-header">
+				<h3 id="qwen-upload-title" class="sub-title">Upload New Voice</h3>
+				<button class="btn-small" onclick={closeUploadModal} disabled={uploading}>Close</button>
+			</div>
+			<div class="modal-body">
+				<input type="text" class="input-tech" bind:value={uploadName} placeholder="Voice name..." />
+				<input type="text" class="input-tech" bind:value={uploadRefText} placeholder="Reference text (optional)" />
+				<div class="toggle-row">
+					<label>
+						<input type="checkbox" bind:checked={uploadXVectorOnly} />
+						x_vector_only_mode
+					</label>
+					<label>
+						<input type="checkbox" bind:checked={uploadActivate} />
+						activate
+					</label>
+				</div>
+				<input type="file" accept="audio/*,.wav,.mp3,.flac,.m4a" bind:this={uploadFileInput} />
+				<div class="modal-actions">
+					<button class="btn-small" onclick={closeUploadModal} disabled={uploading}>Cancel</button>
+					<button class="btn-tech" onclick={uploadVoice} disabled={uploading}>
+						{uploading ? 'Uploading...' : 'Upload Voice'}
+					</button>
+				</div>
+			</div>
+		</div>
+	</div>
+{/if}
+
 <style>
 	.section-card {
 		background: var(--c-panel, rgba(13,17,23,0.95));
@@ -396,7 +449,14 @@
 		text-transform: uppercase;
 		letter-spacing: 0.15em;
 		color: var(--c-text-accent);
-		margin: 0 0 16px;
+		margin: 0;
+	}
+	.section-header {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 8px;
+		margin-bottom: 16px;
 	}
 	.sub-title {
 		font-family: var(--font-tech);
@@ -524,8 +584,48 @@
 		background: rgba(0,0,0,0.3);
 		border-left: 2px solid var(--c-text-accent);
 	}
+	.modal-backdrop {
+		position: fixed;
+		inset: 0;
+		z-index: 1200;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		padding: 12px;
+		background: rgba(2,4,10,0.75);
+	}
+	.modal-panel {
+		width: min(560px, 100%);
+		max-height: calc(100dvh - 24px);
+		overflow-y: auto;
+		background: var(--c-panel, rgba(13,17,23,0.98));
+		border: 1px solid var(--c-border);
+		padding: 14px;
+		box-sizing: border-box;
+	}
+	.modal-header {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 8px;
+		margin-bottom: 10px;
+	}
+	.modal-body {
+		display: flex;
+		flex-direction: column;
+		gap: 8px;
+	}
+	.modal-actions {
+		display: flex;
+		gap: 8px;
+		align-items: center;
+	}
+	.modal-actions .btn-tech {
+		flex: 1;
+	}
 	@media (max-width: 500px) {
 		.voice-row { flex-direction: column; align-items: flex-start; gap: 6px; }
 		.voice-actions { width: 100%; justify-content: flex-start; }
+		.section-header { align-items: flex-start; flex-direction: column; }
 	}
 </style>

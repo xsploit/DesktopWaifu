@@ -19,6 +19,31 @@ interface SimilarityResult {
 	conversationId: number;
 }
 
+export interface MemoryCompactionChunkResult {
+	startIndex: number;
+	endIndex: number;
+	messageCount: number;
+	sourceEmbeddings: number;
+	status: 'compacted' | 'skipped' | 'error';
+	reason?: string;
+	summaryPreview?: string;
+}
+
+export interface MemoryCompactionResult {
+	conversationId: number;
+	dryRun: boolean;
+	keepWindow: number;
+	chunkSize: number;
+	totalMessages: number;
+	candidateMessages: number;
+	chunksPlanned: number;
+	chunksProcessed: number;
+	summariesCreated: number;
+	summaryEmbeddingsCreated: number;
+	embeddingsDeleted: number;
+	details: MemoryCompactionChunkResult[];
+}
+
 export class MemoryManager {
 	worker: Worker | null = null;
 	mode: MemoryMode = 'hybrid';
@@ -303,6 +328,180 @@ export class MemoryManager {
 		} catch (e) {
 			console.error('[MemoryManager] Summarization failed:', e);
 		}
+	}
+
+	async compactConversationMemory(
+		conversationId: number,
+		options: {
+			dryRun?: boolean;
+			chunkSize?: number;
+			keepWindow?: number;
+			clearOverlappingSummaries?: boolean;
+		} = {}
+	): Promise<MemoryCompactionResult> {
+		if (!this.summarizationProvider || !this.summarizationModel) {
+			throw new Error('Summarization provider/model is not configured');
+		}
+
+		const dryRun = options.dryRun ?? true;
+		const chunkSize = Math.max(4, Math.min(80, Math.floor(options.chunkSize ?? 12)));
+		const keepWindow = Math.max(5, Math.floor(options.keepWindow ?? this.windowSize));
+		const clearOverlappingSummaries = options.clearOverlappingSummaries ?? true;
+
+		const storage = getStorageManager();
+		const convo = await storage.getConversation(conversationId);
+		const messages = Array.isArray(convo?.messages) ? convo.messages : [];
+		const totalMessages = messages.length;
+		const candidateMessages = Math.max(0, totalMessages - keepWindow);
+		const chunksPlanned = candidateMessages > 0 ? Math.ceil(candidateMessages / chunkSize) : 0;
+
+		const result: MemoryCompactionResult = {
+			conversationId,
+			dryRun,
+			keepWindow,
+			chunkSize,
+			totalMessages,
+			candidateMessages,
+			chunksPlanned,
+			chunksProcessed: 0,
+			summariesCreated: 0,
+			summaryEmbeddingsCreated: 0,
+			embeddingsDeleted: 0,
+			details: []
+		};
+
+		if (candidateMessages <= 0) return result;
+
+		let cachedEmbeddings = this._embeddingCache;
+		if (!cachedEmbeddings) {
+			cachedEmbeddings = await storage.getAllEmbeddings();
+			this._embeddingCache = cachedEmbeddings;
+		}
+
+		for (let start = 0; start < candidateMessages; start += chunkSize) {
+			const end = Math.min(candidateMessages - 1, start + chunkSize - 1);
+			const chunkMessages = messages.slice(start, end + 1);
+			result.chunksProcessed++;
+
+			if (chunkMessages.length === 0) {
+				result.details.push({
+					startIndex: start,
+					endIndex: end,
+					messageCount: 0,
+					sourceEmbeddings: 0,
+					status: 'skipped',
+					reason: 'empty_chunk'
+				});
+				continue;
+			}
+
+			const sourceEmbeddings = cachedEmbeddings.filter(
+				(e) =>
+					e.conversationId === conversationId &&
+					e.messageIndex >= start &&
+					e.messageIndex <= end
+			).length;
+
+			let summary: string | null = null;
+			try {
+				summary = await this._callSummarizationLlm(chunkMessages);
+			} catch (e) {
+				const reason = e instanceof Error ? e.message : String(e);
+				result.details.push({
+					startIndex: start,
+					endIndex: end,
+					messageCount: chunkMessages.length,
+					sourceEmbeddings,
+					status: 'error',
+					reason
+				});
+				continue;
+			}
+
+			if (!summary || !summary.trim()) {
+				result.details.push({
+					startIndex: start,
+					endIndex: end,
+					messageCount: chunkMessages.length,
+					sourceEmbeddings,
+					status: 'skipped',
+					reason: 'empty_summary'
+				});
+				continue;
+			}
+
+			const cleanSummary = summary.trim();
+			const summaryPreview = cleanSummary.length > 180
+				? cleanSummary.slice(0, 180) + '...'
+				: cleanSummary;
+
+			if (!dryRun) {
+				if (clearOverlappingSummaries) {
+					await storage.deleteSummariesByConversationRange(conversationId, start, end);
+				}
+
+				const deleted = await storage.deleteEmbeddingsByConversationRange(conversationId, start, end);
+				result.embeddingsDeleted += deleted;
+
+				if (this._embeddingCache) {
+					this._embeddingCache = this._embeddingCache.filter(
+						(e) =>
+							!(
+								e.conversationId === conversationId &&
+								e.messageIndex >= start &&
+								e.messageIndex <= end
+							)
+					);
+				}
+
+				await storage.saveSummary({
+					conversationId,
+					summary: cleanSummary,
+					messageRange: [start, end],
+					timestamp: Date.now()
+				});
+				result.summariesCreated++;
+
+				if (this.modelReady) {
+					try {
+						const vector = await this.embedText(cleanSummary);
+						const summaryEmbedding: Omit<EmbeddingEntry, 'id'> = {
+							conversationId,
+							messageIndex: start,
+							role: 'summary',
+							text: `[summary ${start}-${end}] ${cleanSummary}`,
+							vector,
+							timestamp: Date.now()
+						};
+						const embeddingId = await storage.saveEmbedding(summaryEmbedding);
+						result.summaryEmbeddingsCreated++;
+						if (this._embeddingCache) {
+							const id =
+								typeof embeddingId === 'number' && Number.isFinite(embeddingId)
+									? embeddingId
+									: undefined;
+							this._embeddingCache.push({
+								id,
+								...summaryEmbedding
+							});
+						}
+					} catch (e) {
+						console.warn('[MemoryManager] Failed to embed summary:', e);
+					}
+				}
+			}
+
+			result.details.push({
+				startIndex: start,
+				endIndex: end,
+				messageCount: chunkMessages.length,
+				sourceEmbeddings,
+				status: 'compacted',
+				summaryPreview
+			});
+		}
+
+		return result;
 	}
 
 	private async _callSummarizationLlm(

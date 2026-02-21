@@ -1,5 +1,8 @@
 <script lang="ts">
-	import { getMemoryManager } from '../../memory/manager.js';
+	import {
+		getMemoryManager,
+		type MemoryCompactionResult
+	} from '../../memory/manager.js';
 	import { getStorageManager } from '../../storage/index.js';
 
 	let {
@@ -29,18 +32,43 @@
 	const memoryManager = getMemoryManager();
 	const storage = getStorageManager();
 
+	interface ConversationMemoryRow {
+		id: number;
+		title: string;
+		messageCount: number;
+		embeddingCount: number;
+		summaryCount: number;
+		summarizedMessages: number;
+		summaryCoverage: number;
+		lastSummaryTimestamp: number | null;
+	}
+
 	let modelLoading = $state(false);
 	let modelReady = $state(false);
 	let embeddingsCount = $state(0);
 	let summariesCount = $state(0);
+	let conversationsCount = $state(0);
+	let currentConversationId = $state<number | null>(null);
+	let selectedConversationId = $state<number | null>(null);
+	let conversationRows = $state<ConversationMemoryRow[]>([]);
+	let estimatedStorage = $state('Unknown');
 	let statusMsg = $state('');
 	let confirmClearEmbeddings = $state(false);
 	let confirmClearSummaries = $state(false);
+	let compactBusy = $state(false);
+	let summarizeBusy = $state(false);
+	let compactChunkSize = $state(12);
+	let compactResult = $state<MemoryCompactionResult | null>(null);
+	let showCompactDetails = $state(false);
 
 	function syncRuntimeState() {
 		modelReady = memoryManager.modelReady;
 		modelLoading = memoryManager.modelLoading;
 	}
+
+	const selectedConversation = $derived(
+		conversationRows.find((c) => c.id === selectedConversationId) ?? null
+	);
 
 	const modeDescriptions: Record<string, string> = {
 		'auto-prune': 'Keeps the last N messages in context. Older messages are still embedded and searchable, but pruned from the direct context window.',
@@ -50,13 +78,107 @@
 
 	let showSummarizationConfig = $derived(mode === 'auto-summarize' || mode === 'hybrid');
 
+	function getConversationTitle(messages: any[] | undefined): string {
+		if (!Array.isArray(messages) || messages.length === 0) return 'Empty conversation';
+		const firstUser = messages.find((m: any) => m?.role === 'user');
+		const text = String(firstUser?.content ?? '');
+		if (!text) return 'No user messages';
+		return text.length > 48 ? `${text.slice(0, 48)}...` : text;
+	}
+
+	function computeRangeCoverage(ranges: [number, number][]): number {
+		if (ranges.length === 0) return 0;
+		const sorted = [...ranges].sort((a, b) => a[0] - b[0]);
+		let total = 0;
+		let curStart = sorted[0][0];
+		let curEnd = sorted[0][1];
+		for (let i = 1; i < sorted.length; i++) {
+			const [start, end] = sorted[i];
+			if (start <= curEnd + 1) {
+				curEnd = Math.max(curEnd, end);
+			} else {
+				total += Math.max(0, curEnd - curStart + 1);
+				curStart = start;
+				curEnd = end;
+			}
+		}
+		total += Math.max(0, curEnd - curStart + 1);
+		return total;
+	}
+
 	async function loadStats() {
 		try {
-			const embeddings = await storage.getAllEmbeddings();
+			const [embeddings, summaries, conversations, currentId, storageInfo] = await Promise.all([
+				storage.getAllEmbeddings(),
+				storage.getAllSummaries(),
+				storage.getAllConversations(),
+				storage.getSetting('currentConversationId', null),
+				storage.estimateStorageUsage()
+			]);
+
 			embeddingsCount = embeddings.length;
-			const summaries = await storage.getAllSummaries();
 			summariesCount = summaries.length;
-		} catch { /* storage may not be ready */ }
+			conversationsCount = conversations.length;
+			currentConversationId = typeof currentId === 'number' ? currentId : null;
+			estimatedStorage = storageInfo.formatted;
+
+			const embeddingsByConversation = new Map<number, number>();
+			for (const emb of embeddings) {
+				const prev = embeddingsByConversation.get(emb.conversationId) ?? 0;
+				embeddingsByConversation.set(emb.conversationId, prev + 1);
+			}
+
+			const summariesByConversation = new Map<number, number>();
+			const rangesByConversation = new Map<number, [number, number][]>();
+			const lastSummaryByConversation = new Map<number, number>();
+			for (const summary of summaries) {
+				const prev = summariesByConversation.get(summary.conversationId) ?? 0;
+				summariesByConversation.set(summary.conversationId, prev + 1);
+				const ranges = rangesByConversation.get(summary.conversationId) ?? [];
+				ranges.push(summary.messageRange);
+				rangesByConversation.set(summary.conversationId, ranges);
+				const prevTs = lastSummaryByConversation.get(summary.conversationId) ?? 0;
+				lastSummaryByConversation.set(
+					summary.conversationId,
+					Math.max(prevTs, summary.timestamp ?? 0)
+				);
+			}
+
+			const rows: ConversationMemoryRow[] = conversations
+				.map((convo) => {
+					const messageCount = Array.isArray(convo.messages) ? convo.messages.length : 0;
+					const summarizedMessages = computeRangeCoverage(
+						rangesByConversation.get(convo.id) ?? []
+					);
+					const summaryCoverage = messageCount > 0
+						? Math.min(1, summarizedMessages / messageCount)
+						: 0;
+					return {
+						id: convo.id,
+						title: getConversationTitle(convo.messages),
+						messageCount,
+						embeddingCount: embeddingsByConversation.get(convo.id) ?? 0,
+						summaryCount: summariesByConversation.get(convo.id) ?? 0,
+						summarizedMessages,
+						summaryCoverage,
+						lastSummaryTimestamp: (lastSummaryByConversation.get(convo.id) ?? 0) || null
+					};
+				})
+				.sort((a, b) => b.id - a.id);
+
+			conversationRows = rows;
+
+			const selectedStillExists = rows.some((r) => r.id === selectedConversationId);
+			if (!selectedStillExists) {
+				if (currentConversationId && rows.some((r) => r.id === currentConversationId)) {
+					selectedConversationId = currentConversationId;
+				} else {
+					selectedConversationId = rows[0]?.id ?? null;
+				}
+			}
+		} catch {
+			// storage may not be ready
+		}
 	}
 
 	async function loadModel() {
@@ -95,6 +217,50 @@
 		await loadStats();
 		confirmClearSummaries = false;
 		statusMsg = 'Summaries cleared';
+	}
+
+	function formatTimestamp(ts: number | null): string {
+		if (!ts) return 'Never';
+		return new Date(ts).toLocaleString();
+	}
+
+	async function runPendingSummarization() {
+		if (!selectedConversationId) return;
+		summarizeBusy = true;
+		statusMsg = `Summarizing pending history for conversation #${selectedConversationId}...`;
+		try {
+			await memoryManager.pruneAndSummarize(selectedConversationId);
+			statusMsg = `Summaries updated for conversation #${selectedConversationId}`;
+			await loadStats();
+		} catch (e: any) {
+			statusMsg = 'Summarization failed: ' + (e?.message ?? String(e));
+		} finally {
+			summarizeBusy = false;
+		}
+	}
+
+	async function runCompaction(dryRun: boolean) {
+		if (!selectedConversationId) return;
+		compactBusy = true;
+		const modeLabel = dryRun ? 'dry-run analysis' : 'compaction';
+		statusMsg = `Running ${modeLabel} for conversation #${selectedConversationId}...`;
+		try {
+			compactResult = await memoryManager.compactConversationMemory(selectedConversationId, {
+				dryRun,
+				chunkSize: compactChunkSize,
+				keepWindow: windowSize,
+				clearOverlappingSummaries: true
+			});
+			showCompactDetails = true;
+			statusMsg = dryRun
+				? `Dry-run complete: ${compactResult.chunksProcessed} chunk(s) analyzed`
+				: `Compaction complete: ${compactResult.summariesCreated} summary chunk(s), ${compactResult.embeddingsDeleted} embedding(s) removed`;
+			await loadStats();
+		} catch (e: any) {
+			statusMsg = 'Compaction failed: ' + (e?.message ?? String(e));
+		} finally {
+			compactBusy = false;
+		}
 	}
 
 	// Load stats when component mounts
@@ -241,7 +407,7 @@
 
 		<!-- Memory Stats -->
 		<div class="sub-section">
-			<h3 class="sub-title">Memory Stats</h3>
+			<h3 class="sub-title">Memory Dashboard</h3>
 			<div class="stats-grid">
 				<div class="stat">
 					<span class="stat-value">{embeddingsCount}</span>
@@ -251,7 +417,97 @@
 					<span class="stat-value">{summariesCount}</span>
 					<span class="stat-label">Summaries</span>
 				</div>
+				<div class="stat">
+					<span class="stat-value">{conversationsCount}</span>
+					<span class="stat-label">Conversations</span>
+				</div>
+				<div class="stat">
+					<span class="stat-value small">{estimatedStorage}</span>
+					<span class="stat-label">Browser Storage</span>
+				</div>
 			</div>
+
+			<div class="field-group">
+				<div class="field-label">Conversation Memory View</div>
+				<select class="select-tech" bind:value={selectedConversationId}>
+					{#if conversationRows.length === 0}
+						<option value={null}>No conversations</option>
+					{:else}
+						{#each conversationRows as convo}
+							<option value={convo.id}>
+								#{convo.id}
+								{convo.id === currentConversationId ? ' (current)' : ''}
+								- {convo.title}
+							</option>
+						{/each}
+					{/if}
+				</select>
+			</div>
+
+			{#if selectedConversation}
+				<div class="memory-overview">
+					<div><span>Messages:</span><strong>{selectedConversation.messageCount}</strong></div>
+					<div><span>Embeddings:</span><strong>{selectedConversation.embeddingCount}</strong></div>
+					<div><span>Summaries:</span><strong>{selectedConversation.summaryCount}</strong></div>
+					<div><span>Summarized:</span><strong>{selectedConversation.summarizedMessages} ({(selectedConversation.summaryCoverage * 100).toFixed(0)}%)</strong></div>
+					<div><span>Last Summary:</span><strong>{formatTimestamp(selectedConversation.lastSummaryTimestamp)}</strong></div>
+				</div>
+
+				<div class="compaction-panel">
+					<h4 class="mini-title">Compaction</h4>
+					<div class="slider-row">
+						<div>Chunk Size: <strong>{compactChunkSize}</strong> messages</div>
+						<input type="range" min="6" max="40" step="2" bind:value={compactChunkSize} />
+					</div>
+					<div class="compaction-actions">
+						<button class="btn-small" onclick={runPendingSummarization} disabled={summarizeBusy || compactBusy}>
+							{summarizeBusy ? 'Summarizing...' : 'Run Summarize'}
+						</button>
+						<button class="btn-small" onclick={() => runCompaction(true)} disabled={compactBusy}>
+							{compactBusy ? 'Working...' : 'Dry Run'}
+						</button>
+						<button class="btn-small accent" onclick={() => runCompaction(false)} disabled={compactBusy}>
+							{compactBusy ? 'Working...' : 'Run Compaction'}
+						</button>
+					</div>
+
+					{#if compactResult}
+						<div class="compact-result">
+							<div class="compact-summary">
+								<span>Processed:</span> {compactResult.chunksProcessed}/{compactResult.chunksPlanned}
+								<span>Summaries:</span> {compactResult.summariesCreated}
+								<span>Summary Embeddings:</span> {compactResult.summaryEmbeddingsCreated}
+								<span>Embeddings Removed:</span> {compactResult.embeddingsDeleted}
+							</div>
+							<button class="btn-small" onclick={() => showCompactDetails = !showCompactDetails}>
+								{showCompactDetails ? 'Hide Details' : 'Show Details'}
+							</button>
+							{#if showCompactDetails}
+								<div class="compact-details">
+									{#each compactResult.details as detail}
+										<div class="compact-row">
+											<div class="compact-head">
+												<span>#{detail.startIndex}-{detail.endIndex}</span>
+												<span class={`pill ${detail.status}`}>{detail.status}</span>
+											</div>
+											<div class="compact-meta">
+												msgs: {detail.messageCount} &middot; source emb: {detail.sourceEmbeddings}
+											</div>
+											{#if detail.summaryPreview}
+												<div class="compact-text">{detail.summaryPreview}</div>
+											{/if}
+											{#if detail.reason}
+												<div class="compact-reason">{detail.reason}</div>
+											{/if}
+										</div>
+									{/each}
+								</div>
+							{/if}
+						</div>
+					{/if}
+				</div>
+			{/if}
+
 			<div class="stats-actions">
 				{#if !confirmClearEmbeddings}
 					<button class="btn-small danger" onclick={() => confirmClearEmbeddings = true} disabled={embeddingsCount === 0}>Clear Embeddings</button>
@@ -266,6 +522,7 @@
 					<button class="btn-small danger confirm" onclick={clearSummaries}>Confirm Clear</button>
 					<button class="btn-small" onclick={() => confirmClearSummaries = false}>Cancel</button>
 				{/if}
+				<button class="btn-small" onclick={loadStats}>Refresh</button>
 			</div>
 		</div>
 	{/if}
@@ -469,6 +726,132 @@
 		color: var(--text-muted);
 		text-transform: uppercase;
 		letter-spacing: 0.1em;
+	}
+	.stat-value.small {
+		font-size: 0.72rem;
+		text-align: center;
+	}
+	.memory-overview {
+		margin: 10px 0 12px;
+		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+		gap: 6px 12px;
+		padding: 10px;
+		border: 1px solid var(--c-border);
+		background: rgba(0,0,0,0.25);
+	}
+	.memory-overview div {
+		display: flex;
+		justify-content: space-between;
+		align-items: baseline;
+		gap: 8px;
+		font-size: 0.68rem;
+		color: var(--text-muted);
+		font-family: var(--font-tech);
+	}
+	.memory-overview strong {
+		color: var(--text-main);
+		font-size: 0.7rem;
+		font-weight: 600;
+	}
+	.compaction-panel {
+		margin-top: 8px;
+		padding: 10px;
+		border: 1px solid var(--c-border);
+		background: rgba(0,0,0,0.22);
+	}
+	.mini-title {
+		font-family: var(--font-tech);
+		font-size: 0.65rem;
+		text-transform: uppercase;
+		letter-spacing: 0.12em;
+		color: var(--text-muted);
+		margin: 0 0 10px;
+	}
+	.compaction-actions {
+		display: flex;
+		gap: 6px;
+		flex-wrap: wrap;
+	}
+	.btn-small.accent {
+		border-color: rgba(56,189,248,0.45);
+		color: var(--c-text-accent);
+		background: rgba(56,189,248,0.08);
+	}
+	.compact-result {
+		margin-top: 10px;
+		padding-top: 10px;
+		border-top: 1px dashed var(--c-border);
+	}
+	.compact-summary {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 10px;
+		font-family: var(--font-tech);
+		font-size: 0.64rem;
+		color: var(--text-muted);
+		margin-bottom: 8px;
+	}
+	.compact-summary span {
+		color: var(--c-text-accent);
+	}
+	.compact-details {
+		margin-top: 8px;
+		max-height: 220px;
+		overflow-y: auto;
+		display: flex;
+		flex-direction: column;
+		gap: 6px;
+	}
+	.compact-row {
+		padding: 8px;
+		border: 1px solid var(--c-border);
+		background: rgba(0,0,0,0.25);
+	}
+	.compact-head {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		font-family: var(--font-tech);
+		font-size: 0.65rem;
+		color: var(--text-main);
+	}
+	.pill {
+		font-size: 0.55rem;
+		text-transform: uppercase;
+		letter-spacing: 0.08em;
+		padding: 2px 6px;
+		border: 1px solid var(--c-border);
+	}
+	.pill.compacted {
+		border-color: rgba(16,185,129,0.45);
+		color: var(--success);
+	}
+	.pill.skipped {
+		border-color: rgba(245,158,11,0.45);
+		color: #f59e0b;
+	}
+	.pill.error {
+		border-color: rgba(255,80,80,0.55);
+		color: rgba(255,80,80,1);
+	}
+	.compact-meta {
+		font-family: var(--font-tech);
+		font-size: 0.6rem;
+		color: var(--text-muted);
+		margin-top: 4px;
+	}
+	.compact-text {
+		margin-top: 6px;
+		font-size: 0.7rem;
+		color: var(--text-main);
+		line-height: 1.35;
+	}
+	.compact-reason {
+		margin-top: 6px;
+		font-size: 0.64rem;
+		color: #f59e0b;
+		font-family: var(--font-tech);
 	}
 	.stats-actions {
 		display: flex;

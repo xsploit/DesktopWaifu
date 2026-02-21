@@ -202,6 +202,12 @@
 					ttsManager.qwenEndpoint = ttsSettings.qwenEndpoint;
 					ttsManager.qwenLanguage = ttsSettings.qwenLanguage;
 					ttsManager.qwenVoiceId = ttsSettings.qwenVoiceId;
+					ttsManager.qwenLatencyMode = ttsSettings.qwenLatencyMode;
+					ttsManager.qwenEmitEveryFrames = ttsSettings.qwenEmitEveryFrames;
+					ttsManager.qwenDecodeWindowFrames = ttsSettings.qwenDecodeWindowFrames;
+					ttsManager.qwenOverlapSamples = ttsSettings.qwenOverlapSamples;
+					ttsManager.qwenMaxFrames = ttsSettings.qwenMaxFrames;
+					ttsManager.qwenUseOptimizedDecode = ttsSettings.qwenUseOptimizedDecode;
 				}
 
 				ttsManager.enableTts = true;
@@ -278,6 +284,13 @@
 					ttsSettings.qwenEndpoint = state.tts.qwenEndpoint ?? ttsSettings.qwenEndpoint;
 					ttsSettings.qwenLanguage = state.tts.qwenLanguage ?? ttsSettings.qwenLanguage;
 					ttsSettings.qwenVoiceId = state.tts.qwenVoiceId ?? ttsSettings.qwenVoiceId;
+					ttsSettings.qwenQualityPreset = state.tts.qwenQualityPreset ?? ttsSettings.qwenQualityPreset;
+					ttsSettings.qwenLatencyMode = state.tts.qwenLatencyMode ?? ttsSettings.qwenLatencyMode;
+					ttsSettings.qwenEmitEveryFrames = state.tts.qwenEmitEveryFrames ?? ttsSettings.qwenEmitEveryFrames;
+					ttsSettings.qwenDecodeWindowFrames = state.tts.qwenDecodeWindowFrames ?? ttsSettings.qwenDecodeWindowFrames;
+					ttsSettings.qwenOverlapSamples = state.tts.qwenOverlapSamples ?? ttsSettings.qwenOverlapSamples;
+					ttsSettings.qwenMaxFrames = state.tts.qwenMaxFrames ?? ttsSettings.qwenMaxFrames;
+					ttsSettings.qwenUseOptimizedDecode = state.tts.qwenUseOptimizedDecode ?? ttsSettings.qwenUseOptimizedDecode;
 					ttsSettings.fishApiKey = state.tts.fishApiKey ?? '';
 					ttsSettings.enabled = state.tts.enabled ?? ttsSettings.enabled;
 					ttsSettings.fishModel = state.tts.fishModel ?? ttsSettings.fishModel;
@@ -448,6 +461,12 @@
 					ttsManager.qwenEndpoint = ttsSettings.qwenEndpoint;
 					ttsManager.qwenLanguage = ttsSettings.qwenLanguage;
 					ttsManager.qwenVoiceId = ttsSettings.qwenVoiceId;
+					ttsManager.qwenLatencyMode = ttsSettings.qwenLatencyMode;
+					ttsManager.qwenEmitEveryFrames = ttsSettings.qwenEmitEveryFrames;
+					ttsManager.qwenDecodeWindowFrames = ttsSettings.qwenDecodeWindowFrames;
+					ttsManager.qwenOverlapSamples = ttsSettings.qwenOverlapSamples;
+					ttsManager.qwenMaxFrames = ttsSettings.qwenMaxFrames;
+					ttsManager.qwenUseOptimizedDecode = ttsSettings.qwenUseOptimizedDecode;
 				}
 
 				// Load memory settings
@@ -722,6 +741,13 @@
 				qwenEndpoint: ttsSettings.qwenEndpoint,
 				qwenLanguage: ttsSettings.qwenLanguage,
 				qwenVoiceId: ttsSettings.qwenVoiceId,
+				qwenQualityPreset: ttsSettings.qwenQualityPreset,
+				qwenLatencyMode: ttsSettings.qwenLatencyMode,
+				qwenEmitEveryFrames: ttsSettings.qwenEmitEveryFrames,
+				qwenDecodeWindowFrames: ttsSettings.qwenDecodeWindowFrames,
+				qwenOverlapSamples: ttsSettings.qwenOverlapSamples,
+				qwenMaxFrames: ttsSettings.qwenMaxFrames,
+				qwenUseOptimizedDecode: ttsSettings.qwenUseOptimizedDecode,
 				fishApiKey: ttsSettings.fishApiKey,
 				enabled: ttsSettings.enabled,
 				fishModel: ttsSettings.fishModel,
