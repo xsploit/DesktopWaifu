@@ -12,23 +12,47 @@ export interface SceneRefs {
 	clock: THREE.Clock;
 }
 
+export function isDesktopShell() {
+	return window.location.protocol === 'views:' || window.location.protocol === 'file:';
+}
+
+export function getRenderPixelRatio() {
+	const reported = window.devicePixelRatio || 1;
+	if (isDesktopShell() && reported <= 1.05) {
+		return 2;
+	}
+	return Math.min(Math.max(reported, 1), 2);
+}
+
+export function getViewportSize(canvas: HTMLCanvasElement) {
+	const rect = canvas.getBoundingClientRect();
+	return {
+		width: Math.max(1, Math.round(rect.width || window.innerWidth || 1)),
+		height: Math.max(1, Math.round(rect.height || window.innerHeight || 1))
+	};
+}
+
 export function createScene(canvas: HTMLCanvasElement): SceneRefs {
+	const { width, height } = getViewportSize(canvas);
+	const transparentCanvas = isDesktopShell();
 	const renderer = new THREE.WebGLRenderer({
 		canvas,
 		antialias: true,
-		alpha: false
+		alpha: transparentCanvas,
+		premultipliedAlpha: true
 	});
-	renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-	renderer.setSize(window.innerWidth, window.innerHeight);
-	renderer.setClearColor(0x02040a, 1);
+	renderer.setPixelRatio(getRenderPixelRatio());
+	renderer.setSize(width, height, false);
+	renderer.setClearColor(0x02040a, transparentCanvas ? 0 : 1);
 	renderer.autoClear = true;
 	renderer.toneMapping = THREE.ACESFilmicToneMapping;
 	renderer.toneMappingExposure = 0.85;
 	renderer.outputColorSpace = THREE.SRGBColorSpace;
 	renderer.shadowMap.enabled = false;
+	renderer.domElement.style.background = 'transparent';
 
 	const scene = new THREE.Scene();
-	const camera = new THREE.PerspectiveCamera(35, window.innerWidth / window.innerHeight, 0.1, 100);
+	const camera = new THREE.PerspectiveCamera(35, width / height, 0.1, 100);
 	camera.position.set(0, 1.45, 3.2);
 	camera.lookAt(0, 1.4, 0);
 	scene.add(camera);
@@ -53,9 +77,14 @@ export function createScene(canvas: HTMLCanvasElement): SceneRefs {
 	return { renderer, scene, camera, key, fill, rim, hemi, ambient, clock };
 }
 
-export function resizeScene(refs: SceneRefs) {
+export function resizeScene(refs: SceneRefs, canvas?: HTMLCanvasElement) {
 	const { renderer, camera } = refs;
-	camera.aspect = window.innerWidth / window.innerHeight;
+	const { width, height } = canvas ? getViewportSize(canvas) : {
+		width: Math.max(1, window.innerWidth || 1),
+		height: Math.max(1, window.innerHeight || 1)
+	};
+	renderer.setPixelRatio(getRenderPixelRatio());
+	camera.aspect = width / height;
 	camera.updateProjectionMatrix();
-	renderer.setSize(window.innerWidth, window.innerHeight);
+	renderer.setSize(width, height, false);
 }

@@ -3,6 +3,11 @@
 	import { getTtsSettings, toast } from '../../stores/app.svelte.js';
 	import { getTtsManager } from '../../tts/manager.js';
 	import { KOKORO_VOICES, type KokoroVoice } from '../../tts/kokoro.js';
+	import {
+		createFishVoice as createFishVoiceModel,
+		listFishModels as listFishVoiceModels,
+		searchFishModels as searchFishVoiceModels
+	} from '../../tts/fish-client.js';
 
 	const tts = getTtsSettings();
 	const ttsManager = getTtsManager();
@@ -170,13 +175,7 @@
 		if (!tts.fishApiKey) return toast('Enter Fish Audio API key first (Keys page)');
 		fishLoading = true;
 		try {
-			const res = await fetch('/api/tts/fish', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ action: 'list-models', apiKey: tts.fishApiKey })
-			});
-			const data = await res.json();
-			fishModels = data.items || [];
+			fishModels = await listFishVoiceModels(tts.fishApiKey);
 			// Persist to store so auto-save picks them up
 			tts.fishSavedVoices = fishModels.map((m: any) => ({ id: m.id, name: m.name }));
 			if (fishModels.length === 0) toast('No voice models found');
@@ -192,13 +191,7 @@
 		if (!tts.fishApiKey || !fishSearchQuery.trim()) return;
 		fishSearching = true;
 		try {
-			const res = await fetch('/api/tts/fish', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ action: 'search-models', apiKey: tts.fishApiKey, query: fishSearchQuery.trim() })
-			});
-			const data = await res.json();
-			fishSearchResults = data.items || [];
+			fishSearchResults = await searchFishVoiceModels(tts.fishApiKey, fishSearchQuery.trim());
 			if (fishSearchResults.length === 0) toast('No models found');
 		} catch (e: any) {
 			toast('Search failed: ' + e.message);
@@ -214,20 +207,11 @@
 		if (!fishVoiceName.trim()) return toast('Enter a name for the voice');
 		fishCreating = true;
 		try {
-			const formData = new FormData();
-			formData.append('apiKey', tts.fishApiKey);
-			formData.append('title', fishVoiceName.trim());
-			formData.append('voice', file);
-			const res = await fetch('/api/tts/fish', { method: 'POST', body: formData });
-			const data = await res.json();
-			if (!res.ok) {
-				toast('Create failed: ' + (data.error || 'Unknown error'));
-			} else {
-				tts.fishVoiceId = data.id;
-				fishVoiceName = '';
-				toast('Voice model created! ID: ' + data.id);
-				loadFishModels();
-			}
+			const data = await createFishVoiceModel(tts.fishApiKey, fishVoiceName.trim(), file);
+			tts.fishVoiceId = data.id;
+			fishVoiceName = '';
+			toast('Voice model created! ID: ' + data.id);
+			loadFishModels();
 		} catch (e: any) {
 			toast('Create error: ' + e.message);
 		} finally {

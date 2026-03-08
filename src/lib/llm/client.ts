@@ -118,19 +118,22 @@ export class LlmClient {
 			}
 			case 'ollama': {
 				const ollamaOpts = { num_ctx: this.numCtx, flash_attn: this.flashAttn, kv_cache_type: this.kvCacheType };
+				const ollamaFetch = (async (url: URL | RequestInfo, init?: RequestInit) => {
+					if (init?.body && typeof init.body === 'string') {
+						try {
+							const body = JSON.parse(init.body);
+							body.options = ollamaOpts;
+							init = { ...init, body: JSON.stringify(body) };
+						} catch {
+							// pass through
+						}
+					}
+					return globalThis.fetch(url, init);
+				}) as typeof fetch;
 				const ollama = aiSdk.createOpenResponses({
 					name: 'ollama',
 					url: `${this._getOllamaBaseUrl()}/v1/responses`,
-					fetch: async (url, init) => {
-						if (init?.body && typeof init.body === 'string') {
-							try {
-								const body = JSON.parse(init.body);
-								body.options = ollamaOpts;
-								init = { ...init, body: JSON.stringify(body) };
-							} catch { /* pass through */ }
-						}
-						return globalThis.fetch(url, init);
-					}
+					fetch: ollamaFetch
 				});
 				return ollama(this.model);
 			}

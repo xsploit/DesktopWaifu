@@ -6,7 +6,7 @@
    ============================================ */
 
 :root {
-  --bg-canvas: transparent;
+  --bg-canvas: #02040a;
   --c-panel: rgba(13, 17, 23, 0.96);
   --c-border: rgba(56, 189, 248, 0.2);
   --c-border-hover: rgba(56, 189, 248, 0.5);
@@ -41,10 +41,19 @@ html, body {
 
 body {
   margin: 0;
-  background: #02040a;
+  background: var(--bg-canvas);
   font-family: var(--font-ui);
   color: var(--text-main);
   overscroll-behavior: none;
+}
+
+html[data-desktop-shell="electrobun"],
+html[data-desktop-shell="electrobun"] body {
+  background: transparent;
+}
+
+html[data-desktop-shell="electrobun"] {
+  --bg-canvas: transparent;
 }
 
 /* ============================================

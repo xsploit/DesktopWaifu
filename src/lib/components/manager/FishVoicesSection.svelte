@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { createFishVoice, deleteFishModel, listFishModels, searchFishModels } from '../../tts/fish-client.js';
+
 	let {
 		fishApiKey,
 		fishSavedVoices = $bindable(),
@@ -28,13 +30,7 @@
 		loadingModels = true;
 		statusMsg = '';
 		try {
-			const res = await fetch('/api/tts/fish', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ action: 'list-models', apiKey: fishApiKey })
-			});
-			const data = await res.json();
-			myModels = data.items || [];
+			myModels = await listFishModels(fishApiKey);
 			statusMsg = myModels.length > 0 ? `${myModels.length} models loaded` : 'No models found';
 		} catch (e: any) {
 			statusMsg = 'Failed: ' + e.message;
@@ -47,13 +43,7 @@
 		if (!fishApiKey || !searchQuery.trim()) return;
 		searching = true;
 		try {
-			const res = await fetch('/api/tts/fish', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ action: 'search-models', apiKey: fishApiKey, query: searchQuery.trim() })
-			});
-			const data = await res.json();
-			searchResults = data.items || [];
+			searchResults = await searchFishModels(fishApiKey, searchQuery.trim());
 			if (searchResults.length === 0) statusMsg = 'No results found';
 		} catch (e: any) {
 			statusMsg = 'Search failed: ' + e.message;
@@ -70,23 +60,13 @@
 		creating = true;
 		statusMsg = '';
 		try {
-			const formData = new FormData();
-			formData.append('apiKey', fishApiKey);
-			formData.append('title', voiceName.trim());
-			formData.append('voice', file);
-			const res = await fetch('/api/tts/fish', { method: 'POST', body: formData });
-			const data = await res.json();
-			if (!res.ok) {
-				statusMsg = 'Create failed: ' + (data.error || 'Unknown error');
-			} else {
-				// Auto-save to fishSavedVoices
-				const newVoice = { id: data.id, name: voiceName.trim() };
-				fishSavedVoices = [...fishSavedVoices, newVoice];
-				fishVoiceId = data.id;
-				voiceName = '';
-				statusMsg = 'Voice created! ID: ' + data.id;
-				loadMyModels();
-			}
+			const data = await createFishVoice(fishApiKey, voiceName.trim(), file);
+			const newVoice = { id: data.id, name: voiceName.trim() };
+			fishSavedVoices = [...fishSavedVoices, newVoice];
+			fishVoiceId = data.id;
+			voiceName = '';
+			statusMsg = 'Voice created! ID: ' + data.id;
+			loadMyModels();
 		} catch (e: any) {
 			statusMsg = 'Create error: ' + e.message;
 		} finally {
@@ -97,11 +77,7 @@
 	async function deleteModel(id: string) {
 		if (!fishApiKey) return;
 		try {
-			await fetch('/api/tts/fish', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ action: 'delete-model', apiKey: fishApiKey, modelId: id })
-			});
+			await deleteFishModel(fishApiKey, id);
 			myModels = myModels.filter(m => m.id !== id);
 			fishSavedVoices = fishSavedVoices.filter(v => v.id !== id);
 			if (fishVoiceId === id) fishVoiceId = '';

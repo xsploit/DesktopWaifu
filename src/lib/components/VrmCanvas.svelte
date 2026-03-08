@@ -124,7 +124,7 @@
 
 			function onResize() {
 				if (!sceneRefs || !ppRefs || !runtime) return;
-				rt.resizeScene(sceneRefs);
+				rt.resizeScene(sceneRefs, canvasEl);
 				rt.resizePostProcessing(ppRefs, sceneRefs.renderer);
 			}
 
@@ -298,5 +298,4 @@
 		display: block;
 	}
 </style>
-
 

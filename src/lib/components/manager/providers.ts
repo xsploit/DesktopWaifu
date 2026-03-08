@@ -1,4 +1,5 @@
 import { LlmClient } from '../../llm/client.js';
+import { listFishModels } from '../../tts/fish-client.js';
 
 export interface ProviderConfig {
 	id: string;
@@ -52,14 +53,8 @@ export async function testFishProvider(
 	apiKey: string
 ): Promise<{ ok: boolean; count?: number; error?: string }> {
 	try {
-		const res = await fetch('/api/tts/fish', {
-			method: 'POST',
-			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({ action: 'list-models', apiKey })
-		});
-		const data = await res.json();
-		if (!res.ok) return { ok: false, error: data.error || 'Request failed' };
-		return { ok: true, count: data.items?.length ?? 0 };
+		const items = await listFishModels(apiKey);
+		return { ok: true, count: items.length };
 	} catch (e: any) {
 		return { ok: false, error: e.message };
 	}

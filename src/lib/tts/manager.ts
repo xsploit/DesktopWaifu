@@ -1,5 +1,11 @@
 import { isKokoroReady, generateSpeechBlob, KOKORO_VOICES, type KokoroVoice } from './kokoro.js';
 import type { WLipSyncAudioNode, Profile as WLipSyncProfile } from 'wlipsync';
+import {
+	createFishRealtimeSession,
+	listFishModels,
+	synthesizeFishAudio,
+	type FishRealtimeSession
+} from './fish-client.js';
 
 // NOTE: Worker URL must be inline in `new Worker()` call so Vite
 // recognizes the pattern and bundles the worker as a proper JS file.
@@ -122,6 +128,9 @@ export class TtsManager {
 	_fishAbortController: AbortController | null = null;
 	_fishTextEncoder = new TextEncoder();
 	_fishTextController: WritableStreamDefaultWriter<Uint8Array> | null = null;
+	_fishElectrobunSession: FishRealtimeSession | null = null;
+	_fishStreamInitPromise: Promise<void> | null = null;
+	_fishSessionToken = 0;
 	_fishAudioPromise: Promise<void> | null = null;
 	_fishResponseSampleRate: number | null = null;
 	_fishChunkCount = 0;
@@ -261,17 +270,31 @@ export class TtsManager {
 	_sendToProvider(text: string) {
 		if (this.provider === 'fish') {
 			// Realtime mode: keep one Fish WebSocket session open and stream text chunks into it.
-			if (!this._fishTextController) {
-				this._startFishStreamSession();
-			}
-			if (!this._fishTextController) {
-				this.onError?.(new Error('Fish realtime stream unavailable (missing API key or failed stream init)'));
-				return;
+			if (!this._fishTextController && !this._fishElectrobunSession) {
+				if (!this._fishStreamInitPromise) {
+					const initPromise = this._startFishStreamSession();
+					this._fishStreamInitPromise = initPromise.finally(() => {
+						if (this._fishStreamInitPromise === initPromise) {
+							this._fishStreamInitPromise = null;
+						}
+					});
+				}
 			}
 			// Generate approximate word boundaries + phonemes for lip sync
 			this._fishLipSyncChain = this._fishLipSyncChain.then(() => this._appendFishApproxLipSync(text));
-			void this._fishTextController
-				.write(this._fishTextEncoder.encode(text + ' '))
+			const readyPromise = this._fishStreamInitPromise ?? Promise.resolve();
+			void readyPromise
+				.then(async () => {
+					if (this._fishElectrobunSession) {
+						await this._fishElectrobunSession.write(text + ' ');
+						return;
+					}
+					if (this._fishTextController) {
+						await this._fishTextController.write(this._fishTextEncoder.encode(text + ' '));
+						return;
+					}
+					throw new Error('Fish realtime stream unavailable (missing API key or failed stream init)');
+				})
 				.catch((err) => {
 					const e = err instanceof Error ? err : new Error(String(err));
 					this.onError?.(e);
@@ -302,11 +325,23 @@ export class TtsManager {
 	/** Finalize the current turn for the active provider */
 	_finalizeProvider() {
 		if (this.provider === 'fish') {
-			if (this._fishTextController) {
-				void this._fishTextController.close().catch(() => {});
-				this._fishTextController = null;
-			}
-			void this._finalizeFishStream();
+			void (async () => {
+				try {
+					await (this._fishStreamInitPromise ?? Promise.resolve());
+					if (this._fishElectrobunSession) {
+						const session = this._fishElectrobunSession;
+						this._fishElectrobunSession = null;
+						await session.close();
+					} else if (this._fishTextController) {
+						await this._fishTextController.close().catch(() => {});
+						this._fishTextController = null;
+					}
+					await this._finalizeFishStream();
+				} catch (err) {
+					const e = err instanceof Error ? err : new Error(String(err));
+					this.onError?.(e);
+				}
+			})();
 			return;
 		}
 
@@ -329,11 +364,17 @@ export class TtsManager {
 		this.chunkBuffer = '';
 		this.isFirstChunkOfTurn = true;
 		this.pendingChunk = null;
+		this._fishSessionToken++;
 
 		if (this._fishTextController) {
 			void this._fishTextController.close().catch(() => {});
 			this._fishTextController = null;
 		}
+		if (this._fishElectrobunSession) {
+			void this._fishElectrobunSession.abort().catch(() => {});
+			this._fishElectrobunSession = null;
+		}
+		this._fishStreamInitPromise = null;
 		this._fishAudioPromise = null;
 		this._resetFishRealtimeState(true);
 		this._resetQwenStreamState();
@@ -520,31 +561,22 @@ export class TtsManager {
 
 		let lastError: Error | null = null;
 		let audioBlob: Blob | null = null;
+		let contentType = 'audio/mpeg';
+		let sampleRate: number | undefined;
 
 		for (let attempt = 0; attempt < 2; attempt++) {
-			this._fishAbortController = new AbortController();
 			try {
-				// Use stable non-stream endpoint per chunk to avoid HTTP/2 protocol issues under rapid chunk cadence.
-				const response = await fetch('/api/tts/fish', {
-					method: 'POST',
-					headers: { 'Content-Type': 'application/json' },
-					signal: this._fishAbortController.signal,
-					body: JSON.stringify({
-						text,
-						apiKey: this.fishApiKey,
-						referenceId: this.fishVoiceId || undefined,
-						model: effectiveModel,
-						format: 'mp3',
-						latency: this.fishLatency
-					})
+				const result = await synthesizeFishAudio({
+					text,
+					apiKey: this.fishApiKey,
+					referenceId: this.fishVoiceId || undefined,
+					model: effectiveModel,
+					format: 'mp3',
+					latency: this.fishLatency
 				});
-
-				if (!response.ok) {
-					const err = await response.json().catch(() => ({ error: response.statusText }));
-					throw new Error(err.error || `Fish Audio error ${response.status}`);
-				}
-
-				audioBlob = await response.blob();
+				audioBlob = result.audioBlob;
+				contentType = result.contentType;
+				sampleRate = result.sampleRate;
 				break;
 			} catch (err) {
 				lastError = err instanceof Error ? err : new Error(String(err));
@@ -552,8 +584,6 @@ export class TtsManager {
 					await new Promise((r) => setTimeout(r, 150));
 					continue;
 				}
-			} finally {
-				this._fishAbortController = null;
 			}
 		}
 
@@ -562,10 +592,11 @@ export class TtsManager {
 		}
 
 		return {
-			audioBlob: new Blob([audioBlob], { type: 'audio/mpeg' }),
+			audioBlob: new Blob([audioBlob], { type: contentType }),
 			wordBoundaries: [],
 			phonemes: null,
-			text
+			text,
+			sampleRate
 		};
 	}
 
@@ -961,13 +992,68 @@ export class TtsManager {
 		}
 	}
 
-	_startFishStreamSession() {
-		if (!this.fishApiKey) return;
+	async _startFishStreamSession() {
+		if (!this.fishApiKey) throw new Error('Fish Audio requires API key');
+		const sessionToken = ++this._fishSessionToken;
 		this._resetFishRealtimeState(false);
 		this._fishLipSyncChain = Promise.resolve();
 		this.wordBoundaries = [];
 		this.currentPhonemes = [];
 		this.wordBoundaryStartTime = null;
+
+		const electrobunSession = await createFishRealtimeSession(
+			{
+				apiKey: this.fishApiKey,
+				referenceId: this.fishVoiceId || undefined,
+				model: this.fishModel,
+				format: 'pcm',
+				sampleRate: this.fishSampleRate,
+				latency: this.fishLatency
+			},
+			{
+				onAudioChunk: (chunk, meta) => {
+					const handleChunk = async () => {
+						if (!this.audioContext) await this.initialize();
+						const sampleRate = meta.sampleRate ?? this.fishSampleRate;
+						this._fishResponseSampleRate = sampleRate;
+						this._fishChunkCount++;
+						this._fishTotalBytes += chunk.length;
+						if (meta.contentType.toLowerCase().includes('audio/pcm')) {
+							this._scheduleFishPcmChunk(chunk, sampleRate);
+							return;
+						}
+						const chunkCopy = new Uint8Array(chunk.byteLength);
+						chunkCopy.set(chunk);
+						await this._playAudioChunk({
+							audioBlob: new Blob([chunkCopy], { type: meta.contentType }),
+							wordBoundaries: [],
+							phonemes: null,
+							text: '',
+							sampleRate
+						});
+					};
+					void handleChunk().catch((err) => {
+						const e = err instanceof Error ? err : new Error(String(err));
+						this.onError?.(e);
+					});
+				}
+			}
+		);
+		if (electrobunSession) {
+			if (sessionToken !== this._fishSessionToken) {
+				await electrobunSession.abort().catch(() => {});
+				return;
+			}
+			if (!this.audioContext) await this.initialize();
+			const now = this.audioContext?.currentTime ?? 0;
+			this._fishPlaybackCursorTime = Math.max(this._fishPlaybackCursorTime, now);
+			this._fishElectrobunSession = electrobunSession;
+			this._fishAudioPromise = electrobunSession.completion;
+			return;
+		}
+		if (sessionToken !== this._fishSessionToken) {
+			return;
+		}
 
 		const { readable, writable } = new TransformStream<Uint8Array, Uint8Array>();
 		this._fishTextController = writable.getWriter();
@@ -1362,18 +1448,12 @@ export class TtsManager {
 	async getFishVoices(): Promise<VoiceInfo[]> {
 		if (!this.fishApiKey) return [];
 		try {
-			const response = await fetch('/api/tts/fish', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ action: 'list-voices', apiKey: this.fishApiKey })
-			});
-			if (!response.ok) return [];
-			const data = await response.json();
-			return (Array.isArray(data) ? data : []).map((v: any) => ({
-				id: v.id || v._id,
-				name: v.name || v.title || v._id,
-				author: v.author,
-				language: v.language
+			const items = await listFishModels(this.fishApiKey);
+			return items.map((voice) => ({
+				id: voice.id,
+				name: voice.name,
+				author: voice.author,
+				language: voice.languages?.[0]
 			}));
 		} catch {
 			return [];

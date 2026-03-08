@@ -12,6 +12,7 @@ import { OutlineEffect } from 'three/examples/jsm/effects/OutlineEffect.js';
 import { FXAAShader } from 'three/examples/jsm/shaders/FXAAShader.js';
 import { BleachBypassShader } from 'three/examples/jsm/shaders/BleachBypassShader.js';
 import { ColorCorrectionShader } from 'three/examples/jsm/shaders/ColorCorrectionShader.js';
+import { getRenderPixelRatio, getViewportSize, isDesktopShell } from './scene.js';
 
 const ChromaticAberrationShader = {
 	uniforms: {
@@ -99,6 +100,7 @@ export function initPostProcessing(
 	scene: THREE.Scene,
 	camera: THREE.PerspectiveCamera
 ): PostProcessingRefs {
+	const { width, height } = getViewportSize(renderer.domElement);
 	const outlineEffect = new OutlineEffect(renderer, {
 		defaultThickness: 0.003,
 		defaultColor: [0, 0, 0],
@@ -107,12 +109,15 @@ export function initPostProcessing(
 	});
 
 	const composer = new EffectComposer(renderer);
+	composer.setPixelRatio(getRenderPixelRatio());
+	composer.setSize(width, height);
 
 	const renderPass = new RenderPass(scene, camera);
+	renderPass.clearAlpha = isDesktopShell() ? 0 : 1;
 	composer.addPass(renderPass);
 
 	const bloomPass = new UnrealBloomPass(
-		new THREE.Vector2(window.innerWidth, window.innerHeight),
+		new THREE.Vector2(width, height),
 		0.4,
 		0.6,
 		0.7
@@ -121,7 +126,7 @@ export function initPostProcessing(
 	composer.addPass(bloomPass);
 
 	const outlinePass = new OutlinePass(
-		new THREE.Vector2(window.innerWidth, window.innerHeight),
+		new THREE.Vector2(width, height),
 		scene,
 		camera
 	);
@@ -158,13 +163,13 @@ export function initPostProcessing(
 
 	const pixelRatio = renderer.getPixelRatio();
 	const fxaaPass = new ShaderPass(FXAAShader);
-	fxaaPass.material.uniforms['resolution'].value.x = 1 / (window.innerWidth * pixelRatio);
-	fxaaPass.material.uniforms['resolution'].value.y = 1 / (window.innerHeight * pixelRatio);
+	fxaaPass.material.uniforms['resolution'].value.x = 1 / (width * pixelRatio);
+	fxaaPass.material.uniforms['resolution'].value.y = 1 / (height * pixelRatio);
 	fxaaPass.enabled = false;
 	composer.addPass(fxaaPass);
 
 	const smaaPass = new SMAAPass();
-	smaaPass.setSize(window.innerWidth * pixelRatio, window.innerHeight * pixelRatio);
+	smaaPass.setSize(width * pixelRatio, height * pixelRatio);
 	smaaPass.enabled = false;
 	composer.addPass(smaaPass);
 
@@ -195,9 +200,9 @@ export function resizePostProcessing(
 	refs: PostProcessingRefs,
 	renderer: THREE.WebGLRenderer
 ) {
-	const w = window.innerWidth;
-	const h = window.innerHeight;
+	const { width: w, height: h } = getViewportSize(renderer.domElement);
 	const { composer, fxaaPass, bloomPass, smaaPass, outlinePass } = refs;
+	composer.setPixelRatio(getRenderPixelRatio());
 	composer.setSize(w, h);
 
 	const pixelRatio = renderer.getPixelRatio();

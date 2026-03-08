@@ -866,7 +866,7 @@
 	.shell {
 		position: fixed;
 		inset: 0;
-		background: #02040a;
+		background: var(--bg-canvas);
 	}
 
 	.ui-layer {
