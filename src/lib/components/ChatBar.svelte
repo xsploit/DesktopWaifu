@@ -120,15 +120,15 @@
 <style>
 	#chat-container {
 		position: absolute;
-		bottom: clamp(8px, 4vh, 24px);
+		bottom: clamp(8px, calc(24px * var(--desktop-ui-scale, 1)), 24px);
 		left: 50%;
 		transform: translateX(-50%) translateY(20px);
-		width: min(720px, calc(100% - 64px));
-		max-width: calc(100% - 64px);
+		width: min(var(--desktop-chat-width, 420px), calc(100% - 28px));
+		max-width: calc(100% - 28px);
 		pointer-events: auto;
 		display: flex;
 		flex-direction: column;
-		gap: 4px;
+		gap: calc(4px * var(--desktop-ui-scale, 1));
 		z-index: 50;
 		opacity: 0;
 		visibility: hidden;
@@ -158,8 +158,8 @@
 		clip-path: polygon(19px 0, 100% 0, 100% calc(100% - 19px), calc(100% - 19px) 100%, 0 100%, 0 19px);
 		display: flex;
 		align-items: flex-end;
-		padding: 10px 16px;
-		min-height: 56px;
+		padding: calc(10px * var(--desktop-ui-scale, 1)) calc(16px * var(--desktop-ui-scale, 1));
+		min-height: calc(56px * var(--desktop-ui-scale, 1));
 	}
 	#chat-wrapper:focus-within::before { background: var(--c-text-accent); }
 	#chat-wrapper:focus-within { filter: drop-shadow(0 0 10px rgba(56, 189, 248, 0.2)); }
@@ -169,18 +169,23 @@
 		border: none;
 		color: var(--text-main);
 		resize: none;
-		min-height: 24px;
-		max-height: 140px;
-		padding: 8px 0;
-		font-size: 1rem;
+		min-height: calc(24px * var(--desktop-ui-scale, 1));
+		max-height: calc(140px * var(--desktop-ui-scale, 1));
+		padding: calc(8px * var(--desktop-ui-scale, 1)) 0;
+		font-size: clamp(0.84rem, calc(1rem * var(--desktop-ui-scale, 1)), 1rem);
 		line-height: 1.5;
 		font-family: var(--font-ui);
 	}
 	textarea::placeholder { color: var(--text-dim); }
-	.chat-actions { display: flex; gap: 8px; margin-left: 12px; padding-bottom: 4px; }
+	.chat-actions {
+		display: flex;
+		gap: calc(8px * var(--desktop-ui-scale, 1));
+		margin-left: calc(12px * var(--desktop-ui-scale, 1));
+		padding-bottom: calc(4px * var(--desktop-ui-scale, 1));
+	}
 	.icon-btn {
-		width: 36px;
-		height: 36px;
+		width: clamp(32px, calc(36px * var(--desktop-ui-scale, 1)), 36px);
+		height: clamp(32px, calc(36px * var(--desktop-ui-scale, 1)), 36px);
 		display: flex;
 		align-items: center;
 		justify-content: center;
@@ -212,7 +217,7 @@
 		display: flex;
 		justify-content: space-between;
 		padding: 0 4px;
-		font-size: 0.7rem;
+		font-size: clamp(0.58rem, calc(0.7rem * var(--desktop-ui-scale, 1)), 0.7rem);
 		font-family: var(--font-tech);
 		color: var(--text-dim);
 		text-transform: uppercase;
@@ -228,7 +233,7 @@
 		border: none;
 		padding: 0;
 		font: inherit;
-		font-size: 0.7rem;
+		font-size: clamp(0.58rem, calc(0.7rem * var(--desktop-ui-scale, 1)), 0.7rem);
 		font-family: var(--font-tech);
 		color: var(--text-dim);
 		text-transform: uppercase;
@@ -249,9 +254,9 @@
 	}
 	@media (min-width: 901px) and (max-width: 1280px), (min-width: 901px) and (max-height: 860px) {
 		#chat-container {
-			width: min(620px, calc(100% - 88px));
-			max-width: calc(100% - 88px);
-			bottom: clamp(8px, 2vh, 16px);
+			width: min(var(--desktop-chat-width, 340px), calc(100% - 24px));
+			max-width: calc(100% - 24px);
+			bottom: clamp(8px, calc(16px * var(--desktop-ui-scale, 1)), 16px);
 		}
 		#chat-inner {
 			padding: 8px 12px;

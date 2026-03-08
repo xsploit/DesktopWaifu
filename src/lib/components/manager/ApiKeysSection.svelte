@@ -6,7 +6,7 @@
 	let {
 		providerDefaults = $bindable(),
 		fishApiKey = $bindable(''),
-		qwenEndpoint = $bindable('http://localhost:3088'),
+		qwenEndpoint = $bindable('http://localhost:8000'),
 		onsave
 	}: {
 		providerDefaults: Record<string, ProviderDefaults>;

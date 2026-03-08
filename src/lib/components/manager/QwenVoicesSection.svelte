@@ -41,7 +41,7 @@
 	let refreshTimer: ReturnType<typeof setTimeout> | null = null;
 
 	function normalizeEndpoint(): string {
-		const raw = (qwenEndpoint || 'http://localhost:3088').trim();
+		const raw = (qwenEndpoint || 'http://localhost:8000').trim();
 		const withScheme = /^https?:\/\//i.test(raw) ? raw : `http://${raw}`;
 		return withScheme.replace(/\/+$/, '');
 	}

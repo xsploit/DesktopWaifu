@@ -61,10 +61,10 @@
 	.speech-bubble {
 		display: none;
 		position: absolute;
-		bottom: calc(80px + var(--safe-bottom, 0px));
+		bottom: calc((80px * var(--desktop-ui-scale, 1)) + var(--safe-bottom, 0px));
 		left: 50%;
 		transform: translateX(-50%);
-		width: min(560px, calc(100% - 120px));
+		width: min(var(--desktop-bubble-width, 560px), calc(100% - 120px));
 		pointer-events: auto;
 		z-index: 45;
 		animation: bubbleIn 0.25s var(--ease-tech);
@@ -73,9 +73,9 @@
 	.bubble-content {
 		background: var(--c-panel);
 		border: 1px solid var(--c-border);
-		padding: 12px 16px;
+		padding: calc(12px * var(--desktop-ui-scale, 1)) calc(16px * var(--desktop-ui-scale, 1));
 		font-family: var(--font-ui);
-		font-size: 0.85rem;
+		font-size: clamp(0.74rem, calc(0.85rem * var(--desktop-ui-scale, 1)), 0.85rem);
 		line-height: 1.55;
 		color: var(--text-main);
 		max-height: 150px;

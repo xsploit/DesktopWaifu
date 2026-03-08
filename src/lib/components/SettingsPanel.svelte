@@ -113,12 +113,12 @@
 <style>
 	#settings-panel {
 		position: absolute;
-		top: clamp(64px, 10vh, 84px);
-		right: clamp(12px, 2vw, 24px);
-		width: min(400px, calc(100% - 28px));
-		height: min(680px, calc(100% - 96px));
-		max-height: calc(100% - 72px);
-		pointer-events: auto;
+		top: clamp(56px, calc(84px * var(--desktop-ui-scale, 1)), 84px);
+		right: var(--desktop-edge-gap, 24px);
+		width: min(var(--desktop-panel-width, 380px), calc(100% - 20px));
+		height: min(var(--desktop-panel-height, 680px), calc(100% - 96px));
+		max-height: calc(100% - clamp(56px, calc(72px * var(--desktop-ui-scale, 1)), 72px));
+		pointer-events: none;
 		display: flex;
 		flex-direction: column;
 		transform-origin: top right;
@@ -132,6 +132,7 @@
 		transform: scale(1) translateY(0);
 		opacity: 1;
 		visibility: visible;
+		pointer-events: auto;
 	}
 	.svg-ui-bg {
 		position: absolute;
@@ -146,8 +147,8 @@
 	.tabs-header {
 		display: flex;
 		gap: 2px;
-		padding: 24px 24px 10px 24px;
-		height: 60px;
+		padding: calc(24px * var(--desktop-ui-scale, 1)) calc(24px * var(--desktop-ui-scale, 1)) calc(10px * var(--desktop-ui-scale, 1)) calc(24px * var(--desktop-ui-scale, 1));
+		height: calc(60px * var(--desktop-ui-scale, 1));
 		align-items: center;
 		overflow-x: auto;
 		scrollbar-width: none;
@@ -156,12 +157,12 @@
 	.manager-link {
 		margin-left: auto;
 		font-family: var(--font-tech);
-		font-size: 0.6rem;
+		font-size: clamp(0.54rem, calc(0.6rem * var(--desktop-ui-scale, 1)), 0.6rem);
 		color: var(--text-muted);
 		text-decoration: none;
 		text-transform: uppercase;
 		letter-spacing: 0.05em;
-		padding: 4px 8px;
+		padding: calc(4px * var(--desktop-ui-scale, 1)) calc(8px * var(--desktop-ui-scale, 1));
 		border: 1px solid var(--c-border);
 		transition: all 0.2s;
 	}
@@ -170,8 +171,8 @@
 		background: transparent;
 		border: none;
 		color: var(--text-muted);
-		padding: 6px 12px;
-		font-size: 0.75rem;
+		padding: calc(6px * var(--desktop-ui-scale, 1)) calc(12px * var(--desktop-ui-scale, 1));
+		font-size: clamp(0.64rem, calc(0.75rem * var(--desktop-ui-scale, 1)), 0.75rem);
 		font-family: var(--font-tech);
 		text-transform: uppercase;
 		letter-spacing: 0.05em;
@@ -184,7 +185,7 @@
 	.tab-btn.active::after {
 		content: '';
 		position: absolute;
-		bottom: -8px;
+		bottom: calc(-8px * var(--desktop-ui-scale, 1));
 		left: 0;
 		width: 100%;
 		height: 2px;
@@ -194,28 +195,28 @@
 	.panel-scroll {
 		flex: 1;
 		overflow-y: auto;
-		padding: 20px 24px 30px 24px;
+		padding: calc(20px * var(--desktop-ui-scale, 1)) calc(24px * var(--desktop-ui-scale, 1)) calc(30px * var(--desktop-ui-scale, 1)) calc(24px * var(--desktop-ui-scale, 1));
 		display: flex;
 		flex-direction: column;
-		gap: 20px;
+		gap: calc(20px * var(--desktop-ui-scale, 1));
 		animation: fadeIn 0.3s ease;
 	}
 	.tab-loading, .tab-error {
 		font-family: var(--font-tech);
-		font-size: 0.75rem;
+		font-size: clamp(0.62rem, calc(0.75rem * var(--desktop-ui-scale, 1)), 0.75rem);
 		color: var(--text-muted);
-		padding: 12px;
+		padding: calc(12px * var(--desktop-ui-scale, 1));
 		border: 1px dashed var(--c-border);
 	}
-	.tab-error { color: var(--danger); display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
-	.tab-error-detail { color: var(--text-dim); font-size: 0.65rem; word-break: break-all; }
+	.tab-error { color: var(--danger); display: flex; flex-direction: column; gap: calc(8px * var(--desktop-ui-scale, 1)); align-items: flex-start; }
+	.tab-error-detail { color: var(--text-dim); font-size: clamp(0.54rem, calc(0.65rem * var(--desktop-ui-scale, 1)), 0.65rem); word-break: break-all; }
 	.tab-retry-btn {
-		padding: 8px 16px;
+		padding: calc(8px * var(--desktop-ui-scale, 1)) calc(16px * var(--desktop-ui-scale, 1));
 		background: transparent;
 		border: 1px solid var(--danger);
 		color: var(--danger);
 		font-family: var(--font-tech);
-		font-size: 0.75rem;
+		font-size: clamp(0.62rem, calc(0.75rem * var(--desktop-ui-scale, 1)), 0.75rem);
 		text-transform: uppercase;
 		cursor: pointer;
 		transition: all 0.2s;
@@ -248,7 +249,7 @@
 		#settings-panel {
 			top: clamp(56px, 7vh, 72px);
 			right: 12px;
-			width: min(360px, calc(100% - 24px));
+			width: min(var(--desktop-panel-width, 340px), calc(100% - 20px));
 			height: min(600px, calc(100% - 84px));
 			max-height: calc(100% - 72px);
 		}

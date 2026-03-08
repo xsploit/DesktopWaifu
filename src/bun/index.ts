@@ -36,8 +36,8 @@ function clamp(value: number, min: number, max: number) {
 }
 
 function getInitialFrame() {
-	const targetWidth = 2304;
-	const targetHeight = 1296;
+	const targetWidth = 1720;
+	const targetHeight = 1480;
 	const fitScale = Math.min(
 		1,
 		workArea.width / targetWidth,

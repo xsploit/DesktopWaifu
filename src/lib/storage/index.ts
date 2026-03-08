@@ -458,7 +458,7 @@ export class StorageManager {
 			}
 		}
 
-		const storedQwenEndpoint = await this.getSetting('tts.qwenEndpoint', 'http://localhost:3088');
+		const storedQwenEndpoint = await this.getSetting('tts.qwenEndpoint', 'http://localhost:8000');
 		const qwenEndpoint = this.normalizeLegacyQwenEndpoint(storedQwenEndpoint);
 		if (qwenEndpoint !== storedQwenEndpoint) {
 			await this.setSetting('tts.qwenEndpoint', qwenEndpoint);
@@ -535,15 +535,20 @@ export class StorageManager {
 
 	private normalizeLegacyQwenEndpoint(endpoint: string | null | undefined): string {
 		const raw = String(endpoint ?? '').trim();
-		if (!raw) return 'http://localhost:3088';
+		if (!raw) return 'http://localhost:8000';
 
 		const normalized = raw
 			.replace(/^https?:\/\//i, '')
 			.replace(/\/+$/, '')
 			.toLowerCase();
 
-		if (normalized === 'localhost:8880' || normalized === '127.0.0.1:8880') {
-			return 'http://localhost:3088';
+		if (
+			normalized === 'localhost:8880' ||
+			normalized === '127.0.0.1:8880' ||
+			normalized === 'localhost:3088' ||
+			normalized === '127.0.0.1:3088'
+		) {
+			return 'http://localhost:8000';
 		}
 
 		if (/^https?:\/\//i.test(raw)) {

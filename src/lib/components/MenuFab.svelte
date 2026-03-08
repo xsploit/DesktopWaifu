@@ -21,10 +21,10 @@
 <style>
 	#menu-fab {
 		position: absolute;
-		top: clamp(12px, 2vh, 24px);
-		right: clamp(12px, 2vw, 24px);
-		width: clamp(40px, 7vw, 48px);
-		height: clamp(40px, 7vw, 48px);
+		top: var(--desktop-top-gap, 24px);
+		right: var(--desktop-edge-gap, 24px);
+		width: var(--desktop-icon-size, 48px);
+		height: var(--desktop-icon-size, 48px);
 		background: var(--c-panel);
 		border: none;
 		color: var(--text-main);
@@ -64,7 +64,11 @@
 	}
 	#menu-fab:hover { transform: translateY(0) scale(1.05); }
 	#menu-fab:hover::before { background: var(--c-text-accent); }
-	#menu-fab svg { width: 24px; height: 24px; transition: transform 0.4s var(--ease-tech); }
+	#menu-fab svg {
+		width: clamp(18px, calc(24px * var(--desktop-ui-scale, 1)), 24px);
+		height: clamp(18px, calc(24px * var(--desktop-ui-scale, 1)), 24px);
+		transition: transform 0.4s var(--ease-tech);
+	}
 	#menu-fab.active svg { transform: rotate(90deg); }
 	@media (max-width: 900px) {
 		#menu-fab {

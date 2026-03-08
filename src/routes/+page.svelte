@@ -51,18 +51,18 @@
 	const sequencer = getAnimationSequencer();
 	const memState = getMemoryState();
 	const memoryManager = getMemoryManager();
-	const UI_STAGE_BASE_WIDTH = 1760;
-	const UI_STAGE_BASE_HEIGHT = 980;
-	const UI_STAGE_MARGIN = 56;
 	const MIN_WINDOW_WIDTH = 1100;
 	const MIN_WINDOW_HEIGHT = 720;
+	const UI_REFERENCE_WIDTH = 1720;
+	const UI_REFERENCE_HEIGHT = 1480;
+	const UI_MIN_SCALE = 0.54;
 
 	type ResizeDirection = 'n' | 's' | 'e' | 'w' | 'nw' | 'ne' | 'sw' | 'se';
 
 	let vrmCanvas: VrmCanvas;
 	let uiScale = $state(1);
-	let uiStageWidth = $state(UI_STAGE_BASE_WIDTH);
-	let uiStageHeight = $state(UI_STAGE_BASE_HEIGHT);
+	let uiStageWidth = $state(1);
+	let uiStageHeight = $state(1);
 	let interactiveChromeVisible = $state(true);
 	let interactiveChromeHideTimer: ReturnType<typeof setTimeout> | null = null;
 	let windowInteraction = $state<ElectrobunWindowInteractionState>({
@@ -397,19 +397,25 @@
 
 	onMount(() => {
 		configureSttController({ onSend: handleSend });
+		let uiScaleFrame = 0;
 
 		function updateUiScale() {
-			const width = Math.max(1, window.innerWidth || 1);
-			const height = Math.max(1, window.innerHeight || 1);
-			const availableWidth = Math.max(1, width - UI_STAGE_MARGIN);
-			const availableHeight = Math.max(1, height - UI_STAGE_MARGIN);
-			const scale = Math.min(
-				availableWidth / UI_STAGE_BASE_WIDTH,
-				availableHeight / UI_STAGE_BASE_HEIGHT
-			);
-			uiScale = Math.min(1.18, scale);
-			uiStageWidth = availableWidth / Math.max(uiScale, 0.001);
-			uiStageHeight = availableHeight / Math.max(uiScale, 0.001);
+			const viewport = window.visualViewport;
+			const width = Math.max(1, viewport?.width || window.innerWidth || 1);
+			const height = Math.max(1, viewport?.height || window.innerHeight || 1);
+			const fit = Math.min(width / UI_REFERENCE_WIDTH, height / UI_REFERENCE_HEIGHT);
+			uiScale = Math.min(1, Math.max(UI_MIN_SCALE, Math.max(fit, 0.01)));
+			uiStageWidth = width;
+			uiStageHeight = height;
+		}
+
+		function scheduleUiScaleUpdate() {
+			if (uiScaleFrame) cancelAnimationFrame(uiScaleFrame);
+			uiScaleFrame = requestAnimationFrame(() => {
+				uiScaleFrame = 0;
+				updateUiScale();
+				revealInteractiveChrome(true);
+			});
 		}
 
 		function handleUiActivity() {
@@ -470,7 +476,11 @@
 
 		updateUiScale();
 		revealInteractiveChrome(true);
-		window.addEventListener('resize', updateUiScale);
+		window.addEventListener('resize', scheduleUiScaleUpdate);
+		window.visualViewport?.addEventListener('resize', scheduleUiScaleUpdate);
+		window.visualViewport?.addEventListener('scroll', scheduleUiScaleUpdate);
+		const viewportResizeObserver = new ResizeObserver(() => scheduleUiScaleUpdate());
+		viewportResizeObserver.observe(document.documentElement);
 		window.addEventListener('pointermove', handleUiActivity, { passive: true });
 		window.addEventListener('pointerdown', handleUiActivity, { passive: true });
 		window.addEventListener('touchstart', handleUiActivity, { passive: true });
@@ -908,7 +918,13 @@
 
 		return () => {
 			clearInteractiveChromeHideTimer();
-			window.removeEventListener('resize', updateUiScale);
+			if (uiScaleFrame) {
+				cancelAnimationFrame(uiScaleFrame);
+			}
+			viewportResizeObserver.disconnect();
+			window.removeEventListener('resize', scheduleUiScaleUpdate);
+			window.visualViewport?.removeEventListener('resize', scheduleUiScaleUpdate);
+			window.visualViewport?.removeEventListener('scroll', scheduleUiScaleUpdate);
 			window.removeEventListener('pointermove', handleUiActivity);
 			window.removeEventListener('pointerdown', handleUiActivity);
 			window.removeEventListener('touchstart', handleUiActivity);
@@ -1084,6 +1100,10 @@
 	<div class="resize-hitbox corner-ne" onpointerdown={(event) => startWindowResize('ne', event)}></div>
 	<div class="resize-hitbox corner-sw" onpointerdown={(event) => startWindowResize('sw', event)}></div>
 	<div class="resize-hitbox corner-se" onpointerdown={(event) => startWindowResize('se', event)}></div>
+	<div class="corner-dot corner-dot-nw" class:visible={interactiveChromeVisible}></div>
+	<div class="corner-dot corner-dot-ne" class:visible={interactiveChromeVisible}></div>
+	<div class="corner-dot corner-dot-sw" class:visible={interactiveChromeVisible}></div>
+	<div class="corner-dot corner-dot-se" class:visible={interactiveChromeVisible}></div>
 	<div class="ui-viewport">
 		<div
 			class="ui-stage"
@@ -1118,7 +1138,8 @@
 	}
 
 	.shell.click-through .drag-surface,
-	.shell.click-through .resize-hitbox {
+	.shell.click-through .resize-hitbox,
+	.shell.click-through .corner-dot {
 		pointer-events: none;
 	}
 
@@ -1132,19 +1153,27 @@
 
 	.ui-stage {
 		position: absolute;
-		top: 50%;
-		left: 50%;
-		width: var(--ui-stage-width, 1760px);
-		height: var(--ui-stage-height, 980px);
-		transform: translate(-50%, -50%) scale(var(--ui-scale, 1));
-		transform-origin: center center;
+		inset: 0;
+		width: var(--ui-stage-width, 100vw);
+		height: var(--ui-stage-height, 100vh);
+		--desktop-ui-scale: var(--ui-scale, 1);
+		--desktop-edge-gap: clamp(10px, calc(24px * var(--desktop-ui-scale)), 24px);
+		--desktop-top-gap: clamp(10px, calc(24px * var(--desktop-ui-scale)), 24px);
+		--desktop-icon-size: clamp(30px, calc(48px * var(--desktop-ui-scale)), 48px);
+		--desktop-chat-width: clamp(220px, calc(var(--ui-stage-width, 100vw) * 0.5), 520px);
+		--desktop-chat-margin: clamp(12px, calc(28px * var(--desktop-ui-scale)), 28px);
+		--desktop-panel-width: clamp(280px, calc(var(--ui-stage-width, 100vw) * 0.28), 380px);
+		--desktop-panel-height: clamp(420px, calc(var(--ui-stage-height, 100vh) * 0.78), 680px);
+		--desktop-bubble-width: clamp(260px, calc(var(--ui-stage-width, 100vw) * 0.34), 520px);
+		transform: none;
+		transform-origin: top left;
 		pointer-events: none;
-		will-change: transform;
+		will-change: auto;
 	}
 
 	.top-controls {
 		position: absolute;
-		top: clamp(12px, 2vh, 24px);
+		top: var(--desktop-top-gap);
 		left: 50%;
 		display: flex;
 		align-items: center;
@@ -1198,17 +1227,17 @@
 		display: inline-flex;
 		align-items: center;
 		justify-content: center;
-		min-width: 84px;
+		min-width: calc(84px * var(--desktop-ui-scale));
 		pointer-events: auto;
 		font-family: var(--font-tech);
-		font-size: 0.7rem;
+		font-size: clamp(0.58rem, calc(0.7rem * var(--desktop-ui-scale)), 0.7rem);
 		font-weight: 600;
-		letter-spacing: 0.15em;
+		letter-spacing: calc(0.15em * var(--desktop-ui-scale));
 		text-transform: uppercase;
 		text-decoration: none;
 		color: var(--text-main);
 		background: var(--c-panel);
-		padding: 10px 16px;
+		padding: calc(10px * var(--desktop-ui-scale)) calc(16px * var(--desktop-ui-scale));
 		border: 1px solid var(--c-border);
 		clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px);
 		transition: all 0.2s var(--ease-tech);
@@ -1290,6 +1319,43 @@
 		right: 0;
 		bottom: 0;
 		cursor: nwse-resize;
+	}
+
+	.corner-dot {
+		position: absolute;
+		z-index: 82;
+		width: 6px;
+		height: 6px;
+		border-radius: 999px;
+		background: rgba(160, 160, 160, 0.5);
+		box-shadow: 0 0 0 1px rgba(64, 64, 64, 0.14);
+		pointer-events: none;
+		opacity: 0;
+		transition: opacity 160ms ease;
+	}
+
+	.corner-dot.visible {
+		opacity: 1;
+	}
+
+	.corner-dot-nw {
+		top: 4px;
+		left: 4px;
+	}
+
+	.corner-dot-ne {
+		top: 4px;
+		right: 4px;
+	}
+
+	.corner-dot-sw {
+		left: 4px;
+		bottom: 4px;
+	}
+
+	.corner-dot-se {
+		right: 4px;
+		bottom: 4px;
 	}
 	@media (max-width: 900px) {
 		.top-controls {

@@ -557,7 +557,7 @@
 {#if showQwenOptions}
 	<div class="control-group">
 		<div class="control-label">Genie Endpoint</div>
-		<input type="text" class="input-tech" bind:value={tts.qwenEndpoint} placeholder="http://localhost:3088" />
+		<input type="text" class="input-tech" bind:value={tts.qwenEndpoint} placeholder="http://localhost:8000" />
 		<small class="hint">Local Genie bridge base URL</small>
 	</div>
 

@@ -97,10 +97,10 @@
 <style>
 	.log-toggle {
 		position: absolute;
-		top: clamp(12px, 2vh, 24px);
-		left: clamp(12px, 2vw, 24px);
-		width: clamp(40px, 7vw, 48px);
-		height: clamp(40px, 7vw, 48px);
+		top: var(--desktop-top-gap, 24px);
+		left: var(--desktop-edge-gap, 24px);
+		width: var(--desktop-icon-size, 48px);
+		height: var(--desktop-icon-size, 48px);
 		background: var(--c-panel);
 		border: none;
 		color: var(--text-main);
@@ -146,11 +146,11 @@
 		position: absolute;
 		top: 0;
 		left: 0;
-		width: min(400px, calc(100% - 24px));
+		width: min(var(--desktop-panel-width, 380px), calc(100% - 20px));
 		height: 100%;
 		background: var(--c-panel);
 		border-right: 1px solid var(--c-border);
-		pointer-events: auto;
+		pointer-events: none;
 		z-index: 40;
 		display: flex;
 		flex-direction: column;
@@ -161,42 +161,43 @@
 	.log-panel.open {
 		transform: translateX(0);
 		opacity: 1;
+		pointer-events: auto;
 	}
 
 	.log-header {
 		display: flex;
 		justify-content: space-between;
 		align-items: center;
-		padding: 16px 20px 12px;
-		padding-top: calc(clamp(12px, 2vh, 24px) + clamp(40px, 7vw, 48px) + 12px);
+		padding: calc(16px * var(--desktop-ui-scale, 1)) calc(20px * var(--desktop-ui-scale, 1)) calc(12px * var(--desktop-ui-scale, 1));
+		padding-top: calc(var(--desktop-top-gap, 24px) + var(--desktop-icon-size, 48px) + (12px * var(--desktop-ui-scale, 1)));
 	}
 	.log-title {
 		font-family: var(--font-tech);
-		font-size: 0.75rem;
+		font-size: clamp(0.62rem, calc(0.75rem * var(--desktop-ui-scale, 1)), 0.75rem);
 		font-weight: 600;
-		letter-spacing: 0.15em;
+		letter-spacing: calc(0.15em * var(--desktop-ui-scale, 1));
 		color: var(--c-text-accent);
 		text-transform: uppercase;
 	}
 	.log-header-right {
 		display: flex;
 		align-items: center;
-		gap: 10px;
+		gap: calc(10px * var(--desktop-ui-scale, 1));
 	}
 	.log-count {
 		font-family: var(--font-tech);
-		font-size: 0.65rem;
+		font-size: clamp(0.54rem, calc(0.65rem * var(--desktop-ui-scale, 1)), 0.65rem);
 		color: var(--text-dim);
-		letter-spacing: 0.1em;
+		letter-spacing: calc(0.1em * var(--desktop-ui-scale, 1));
 	}
 	.log-btn {
-		padding: 3px 8px;
+		padding: calc(3px * var(--desktop-ui-scale, 1)) calc(8px * var(--desktop-ui-scale, 1));
 		background: transparent;
 		border: 1px solid var(--c-border);
 		color: var(--text-dim);
 		font-family: var(--font-tech);
-		font-size: 0.6rem;
-		letter-spacing: 0.1em;
+		font-size: clamp(0.5rem, calc(0.6rem * var(--desktop-ui-scale, 1)), 0.6rem);
+		letter-spacing: calc(0.1em * var(--desktop-ui-scale, 1));
 		cursor: pointer;
 		transition: all 0.2s;
 	}
@@ -205,7 +206,7 @@
 
 	.log-deco {
 		height: 1px;
-		margin: 0 20px 8px;
+		margin: 0 calc(20px * var(--desktop-ui-scale, 1)) calc(8px * var(--desktop-ui-scale, 1));
 		background: linear-gradient(90deg, var(--c-text-accent), transparent);
 		opacity: 0.4;
 	}
@@ -213,28 +214,28 @@
 	.log-messages {
 		flex: 1;
 		overflow-y: auto;
-		padding: 8px 16px 120px;
+		padding: calc(8px * var(--desktop-ui-scale, 1)) calc(16px * var(--desktop-ui-scale, 1)) calc(120px * var(--desktop-ui-scale, 1));
 		display: flex;
 		flex-direction: column;
-		gap: 10px;
+		gap: calc(10px * var(--desktop-ui-scale, 1));
 		scrollbar-width: thin;
 		scrollbar-color: var(--c-border) transparent;
 	}
 
 	.log-empty {
 		font-family: var(--font-tech);
-		font-size: 0.75rem;
+		font-size: clamp(0.62rem, calc(0.75rem * var(--desktop-ui-scale, 1)), 0.75rem);
 		color: var(--text-dim);
 		text-align: center;
-		padding: 40px 0;
-		letter-spacing: 0.05em;
+		padding: calc(40px * var(--desktop-ui-scale, 1)) 0;
+		letter-spacing: calc(0.05em * var(--desktop-ui-scale, 1));
 	}
 
 	.log-msg {
 		display: flex;
 		flex-direction: column;
-		gap: 4px;
-		padding: 8px 12px;
+		gap: calc(4px * var(--desktop-ui-scale, 1));
+		padding: calc(8px * var(--desktop-ui-scale, 1)) calc(12px * var(--desktop-ui-scale, 1));
 		border-left: 2px solid var(--c-border);
 		transition: border-color 0.2s;
 	}
@@ -255,9 +256,9 @@
 
 	.msg-role {
 		font-family: var(--font-tech);
-		font-size: 0.6rem;
+		font-size: clamp(0.5rem, calc(0.6rem * var(--desktop-ui-scale, 1)), 0.6rem);
 		font-weight: 600;
-		letter-spacing: 0.15em;
+		letter-spacing: calc(0.15em * var(--desktop-ui-scale, 1));
 		text-transform: uppercase;
 	}
 	.log-msg.user .msg-role { color: var(--c-text-accent); }
@@ -267,7 +268,7 @@
 
 	.msg-text {
 		font-family: var(--font-ui);
-		font-size: 0.82rem;
+		font-size: clamp(0.68rem, calc(0.82rem * var(--desktop-ui-scale, 1)), 0.82rem);
 		line-height: 1.55;
 		color: var(--text-main);
 		word-break: break-word;
@@ -279,13 +280,13 @@
 
 	.log-divider {
 		font-family: var(--font-tech);
-		font-size: 0.6rem;
+		font-size: clamp(0.5rem, calc(0.6rem * var(--desktop-ui-scale, 1)), 0.6rem);
 		color: var(--text-dim);
-		letter-spacing: 0.15em;
+		letter-spacing: calc(0.15em * var(--desktop-ui-scale, 1));
 		text-align: center;
-		padding: 8px 0 4px;
+		padding: calc(8px * var(--desktop-ui-scale, 1)) 0 calc(4px * var(--desktop-ui-scale, 1));
 		border-top: 1px solid var(--c-border);
-		margin-top: 4px;
+		margin-top: calc(4px * var(--desktop-ui-scale, 1));
 	}
 
 	.log-entry {
@@ -297,8 +298,8 @@
 	.log-entry.log-warn .msg-role { color: #f59e0b; }
 	.log-entry.log-err { border-left-color: var(--danger); opacity: 1; }
 	.log-entry.log-err .msg-role { color: var(--danger); }
-	.log-text { font-size: 0.72rem; }
-	.log-time { color: var(--text-dim); margin-right: 4px; }
+	.log-text { font-size: clamp(0.6rem, calc(0.72rem * var(--desktop-ui-scale, 1)), 0.72rem); }
+	.log-time { color: var(--text-dim); margin-right: calc(4px * var(--desktop-ui-scale, 1)); }
 
 	.cursor-blink {
 		color: #22d3ee;
@@ -336,7 +337,7 @@
 	}
 	@media (min-width: 901px) and (max-width: 1280px), (min-width: 901px) and (max-height: 860px) {
 		.log-panel {
-			width: min(340px, calc(100% - 20px));
+			width: min(var(--desktop-panel-width, 340px), calc(100% - 20px));
 		}
 		.log-header {
 			padding: 14px 16px 10px;

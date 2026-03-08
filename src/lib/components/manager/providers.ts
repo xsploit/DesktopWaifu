@@ -26,7 +26,7 @@ export const LLM_PROVIDERS: ProviderConfig[] = [
 
 export const TTS_PROVIDERS: ProviderConfig[] = [
 	{ id: 'fish', label: 'Fish Audio', type: 'cloud', category: 'tts', needsApiKey: true, needsEndpoint: false },
-	{ id: 'qwen', label: 'Genie Local', type: 'local', category: 'tts', needsApiKey: false, needsEndpoint: true, defaultEndpoint: 'http://localhost:3088' },
+	{ id: 'qwen', label: 'Genie Local', type: 'local', category: 'tts', needsApiKey: false, needsEndpoint: true, defaultEndpoint: 'http://localhost:8000' },
 ];
 
 export async function testLlmProvider(
@@ -63,7 +63,7 @@ export async function testFishProvider(
 export async function testQwenProvider(
 	endpoint: string
 ): Promise<{ ok: boolean; message?: string; error?: string }> {
-	const raw = (endpoint || 'http://localhost:3088').trim();
+	const raw = (endpoint || 'http://localhost:8000').trim();
 	const withScheme = /^https?:\/\//i.test(raw) ? raw : `http://${raw}`;
 	const base = withScheme.replace(/\/+$/, '');
 	try {
