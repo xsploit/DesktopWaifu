@@ -115,9 +115,9 @@
 		position: absolute;
 		top: clamp(64px, 10vh, 84px);
 		right: clamp(12px, 2vw, 24px);
-		width: clamp(320px, 70vw, 380px);
-		height: clamp(440px, 75vh, 640px);
-		max-height: calc(100vh - 72px);
+		width: min(400px, calc(100% - 28px));
+		height: min(680px, calc(100% - 96px));
+		max-height: calc(100% - 72px);
 		pointer-events: auto;
 		display: flex;
 		flex-direction: column;
@@ -248,9 +248,9 @@
 		#settings-panel {
 			top: clamp(56px, 7vh, 72px);
 			right: 12px;
-			width: min(340px, calc(100vw - 24px));
-			height: min(560px, calc(100vh - 84px));
-			max-height: calc(100vh - 72px);
+			width: min(360px, calc(100% - 24px));
+			height: min(600px, calc(100% - 84px));
+			max-height: calc(100% - 72px);
 		}
 		.tabs-header {
 			padding: 18px 18px 8px 18px;

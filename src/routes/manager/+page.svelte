@@ -16,7 +16,7 @@
 	let loaded = $state(false);
 	let providerDefaults = $state<Record<string, ProviderDefaults>>({});
 	let fishApiKey = $state('');
-	let qwenEndpoint = $state('http://localhost:8880');
+	let qwenEndpoint = $state('http://localhost:3088');
 	let qwenVoiceId = $state('');
 	let fishSavedVoices = $state<{ id: string; name: string }[]>([]);
 	let fishModel = $state('s1');
@@ -52,7 +52,7 @@
 				// Populate from existing app state
 				if (state.tts) {
 					fishApiKey = state.tts.fishApiKey || '';
-					qwenEndpoint = state.tts.qwenEndpoint || 'http://localhost:8880';
+					qwenEndpoint = state.tts.qwenEndpoint || 'http://localhost:3088';
 					qwenVoiceId = state.tts.qwenVoiceId || '';
 					fishSavedVoices = state.tts.fishSavedVoices || [];
 					fishModel = state.tts.fishModel || 's1';

@@ -75,13 +75,17 @@
 
 <style>
 	.splash-overlay {
-		position: fixed; inset: 0; z-index: 9999;
+		position: absolute; inset: 0; z-index: 9999;
 		background: rgba(0,0,0,0.85); backdrop-filter: blur(8px);
 		display: flex; align-items: center; justify-content: center;
 		pointer-events: all;
+		padding: 28px;
+		box-sizing: border-box;
 	}
 	.splash-modal {
-		width: min(560px, 92vw); max-height: 85vh; overflow-y: auto;
+		width: min(640px, calc(100% - 32px));
+		max-height: calc(100% - 32px);
+		overflow-y: auto;
 		background: #0d1117; border: 1px solid rgba(56,189,248,0.2);
 		box-shadow: 0 0 60px rgba(56,189,248,0.08);
 	}
@@ -172,8 +176,9 @@
 	.splash-modal::-webkit-scrollbar-thumb { background: rgba(56,189,248,0.2); }
 	@media (max-width: 640px) {
 		.splash-modal {
-			max-height: calc(100dvh - 40px);
-			margin: 20px;
+			width: 100%;
+			max-height: 100%;
+			margin: 0;
 		}
 		.splash-dismiss {
 			padding: 16px;
@@ -185,5 +190,4 @@
 		}
 	}
 </style>
-
 

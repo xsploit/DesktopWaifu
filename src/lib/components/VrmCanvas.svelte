@@ -12,7 +12,7 @@
 	let canvasEl: HTMLCanvasElement;
 	let sceneRefs: SceneRefs | null = null;
 	let ppRefs: PostProcessingRefs | null = null;
-	const scaleLimits = { min: 0.25, max: 4.0 };
+	const minScale = 0.001;
 	let rafId: number | null = null;
 	let disposed = false;
 	let teardown: (() => void) | null = null;
@@ -82,6 +82,29 @@
 			pp.bleachBypassPass.enabled || pp.colorCorrectionPass.enabled;
 	}
 
+	function shouldIgnoreScaleGesture(target: EventTarget | null): boolean {
+		if (!(target instanceof Element)) return false;
+		return !!target.closest(
+			[
+				'#settings-panel',
+				'#chat-container',
+				'.log-panel',
+				'.log-toggle',
+				'.top-controls',
+				'.resize-hitbox',
+				'.resize-corner',
+				'#menu-fab',
+				'.speech-bubble',
+				'.splash-overlay',
+				'button',
+				'input',
+				'textarea',
+				'select',
+				'a'
+			].join(', ')
+		);
+	}
+
 	function ensureSceneInitialized(): Promise<void> {
 		if (sceneRefs && ppRefs) return Promise.resolve();
 		if (initPromise) return initPromise;
@@ -129,11 +152,12 @@
 			}
 
 			function onWheel(e: WheelEvent) {
+				if (shouldIgnoreScaleGesture(e.target)) return;
 				e.preventDefault();
 				if (vrmState.vrm && runtime) {
 					const s = vrmState.vrm.scene.scale;
 					const factor = Math.exp(-e.deltaY * 0.0015);
-					const newS = runtime.THREE.MathUtils.clamp(s.x * factor, scaleLimits.min, scaleLimits.max);
+					const newS = Math.max(s.x * factor, minScale);
 					vrmState.vrm.scene.scale.set(newS, newS, 1.0);
 				}
 			}
@@ -142,6 +166,7 @@
 			let lastPinchDist = 0;
 
 			function onTouchStart(e: TouchEvent) {
+				if (shouldIgnoreScaleGesture(e.target)) return;
 				if (e.touches.length === 2) {
 					const dx = e.touches[0].clientX - e.touches[1].clientX;
 					const dy = e.touches[0].clientY - e.touches[1].clientY;
@@ -150,6 +175,7 @@
 			}
 
 			function onTouchMove(e: TouchEvent) {
+				if (shouldIgnoreScaleGesture(e.target)) return;
 				if (e.touches.length === 2 && vrmState.vrm && runtime) {
 					e.preventDefault();
 					const dx = e.touches[0].clientX - e.touches[1].clientX;
@@ -158,7 +184,7 @@
 					if (lastPinchDist > 0) {
 						const factor = dist / lastPinchDist;
 						const s = vrmState.vrm.scene.scale;
-						const newS = runtime.THREE.MathUtils.clamp(s.x * factor, scaleLimits.min, scaleLimits.max);
+						const newS = Math.max(s.x * factor, minScale);
 						vrmState.vrm.scene.scale.set(newS, newS, 1.0);
 					}
 					lastPinchDist = dist;
@@ -171,17 +197,17 @@
 
 			animate();
 			window.addEventListener('resize', onResize);
-			canvasEl.addEventListener('wheel', onWheel, { passive: false });
-			canvasEl.addEventListener('touchstart', onTouchStart, { passive: true });
-			canvasEl.addEventListener('touchmove', onTouchMove, { passive: false });
-			canvasEl.addEventListener('touchend', onTouchEnd, { passive: true });
+			window.addEventListener('wheel', onWheel, { passive: false });
+			window.addEventListener('touchstart', onTouchStart, { passive: true });
+			window.addEventListener('touchmove', onTouchMove, { passive: false });
+			window.addEventListener('touchend', onTouchEnd, { passive: true });
 
 			teardown = () => {
 				window.removeEventListener('resize', onResize);
-				canvasEl.removeEventListener('wheel', onWheel);
-				canvasEl.removeEventListener('touchstart', onTouchStart);
-				canvasEl.removeEventListener('touchmove', onTouchMove);
-				canvasEl.removeEventListener('touchend', onTouchEnd);
+				window.removeEventListener('wheel', onWheel);
+				window.removeEventListener('touchstart', onTouchStart);
+				window.removeEventListener('touchmove', onTouchMove);
+				window.removeEventListener('touchend', onTouchEnd);
 
 				// Dispose VRM before renderer
 				if (vrmState.vrm && runtime) {
@@ -298,4 +324,3 @@
 		display: block;
 	}
 </style>
-

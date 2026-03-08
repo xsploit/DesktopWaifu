@@ -95,7 +95,7 @@ export class TtsManager {
 	fishModel: 's1' | 'speech-1.5' | 'speech-1.6' = 's1';
 	fishLatency: 'normal' | 'balanced' = 'balanced';
 	fishSampleRate = 24000;
-	qwenEndpoint = 'http://localhost:8880';
+	qwenEndpoint = 'http://localhost:3088';
 	qwenLanguage = 'English';
 	qwenVoiceId = '';
 	qwenLatencyMode: 'fast' | 'balanced' | 'quality' = 'fast';
@@ -780,7 +780,7 @@ export class TtsManager {
 	}
 
 	_normalizeQwenEndpoint(): string {
-		const raw = (this.qwenEndpoint || 'http://localhost:8880').trim();
+		const raw = (this.qwenEndpoint || 'http://localhost:3088').trim();
 		const withScheme = /^https?:\/\//i.test(raw) ? raw : `http://${raw}`;
 		return withScheme.replace(/\/+$/, '');
 	}

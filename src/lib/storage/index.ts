@@ -378,13 +378,14 @@ export class StorageManager {
 			await this.setSetting('llm.kvCacheType', llm.kvCacheType);
 		}
 		if (tts) {
+			const normalizedQwenEndpoint = this.normalizeLegacyQwenEndpoint(tts.qwenEndpoint);
 			await this.setSetting('tts.provider', tts.provider);
 			await this.setSetting('tts.kokoroVoice', tts.kokoroVoice);
 			await this.setSetting('tts.kokoroDtype', tts.kokoroDtype ?? 'q4');
 			await this.setSetting('tts.kokoroDevice', tts.kokoroDevice ?? 'webgpu');
 			await this.setSetting('tts.fishVoiceId', tts.fishVoiceId);
 			await this.setSetting('tts.fishLatency', tts.fishLatency);
-			await this.setSetting('tts.qwenEndpoint', tts.qwenEndpoint ?? 'http://localhost:8880');
+			await this.setSetting('tts.qwenEndpoint', normalizedQwenEndpoint);
 			await this.setSetting('tts.qwenLanguage', tts.qwenLanguage ?? 'English');
 			await this.setSetting('tts.qwenVoiceId', tts.qwenVoiceId ?? '');
 			await this.setSetting('tts.qwenQualityPreset', tts.qwenQualityPreset ?? 'fast');
@@ -457,6 +458,12 @@ export class StorageManager {
 			}
 		}
 
+		const storedQwenEndpoint = await this.getSetting('tts.qwenEndpoint', 'http://localhost:3088');
+		const qwenEndpoint = this.normalizeLegacyQwenEndpoint(storedQwenEndpoint);
+		if (qwenEndpoint !== storedQwenEndpoint) {
+			await this.setSetting('tts.qwenEndpoint', qwenEndpoint);
+		}
+
 		return {
 			llm: {
 				provider: await this.getSetting('llm.provider', 'ollama'),
@@ -477,7 +484,7 @@ export class StorageManager {
 				kokoroDevice: await this.getSetting('tts.kokoroDevice', 'webgpu'),
 				fishVoiceId: fishVoiceId ?? '',
 				fishLatency: await this.getSetting('tts.fishLatency', 'balanced'),
-				qwenEndpoint: await this.getSetting('tts.qwenEndpoint', 'http://localhost:8880'),
+				qwenEndpoint,
 				qwenLanguage: await this.getSetting('tts.qwenLanguage', 'English'),
 				qwenVoiceId: await this.getSetting('tts.qwenVoiceId', ''),
 				qwenQualityPreset: await this.getSetting('tts.qwenQualityPreset', 'fast'),
@@ -524,6 +531,26 @@ export class StorageManager {
 			character: await this.getActiveCharacter(),
 			conversation: await this.getCurrentConversation()
 		};
+	}
+
+	private normalizeLegacyQwenEndpoint(endpoint: string | null | undefined): string {
+		const raw = String(endpoint ?? '').trim();
+		if (!raw) return 'http://localhost:3088';
+
+		const normalized = raw
+			.replace(/^https?:\/\//i, '')
+			.replace(/\/+$/, '')
+			.toLowerCase();
+
+		if (normalized === 'localhost:8880' || normalized === '127.0.0.1:8880') {
+			return 'http://localhost:3088';
+		}
+
+		if (/^https?:\/\//i.test(raw)) {
+			return raw.replace(/\/+$/, '');
+		}
+
+		return `http://${raw.replace(/\/+$/, '')}`;
 	}
 
 	// Data management

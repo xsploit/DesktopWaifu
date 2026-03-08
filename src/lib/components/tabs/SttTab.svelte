@@ -1,28 +1,18 @@
 <script lang="ts">
-	import { getSttState, toast, addLog } from '../../stores/app.svelte.js';
-	import { getSttRecorder } from '../../stt/recorder.js';
+	import { getSttState, addLog } from '../../stores/app.svelte.js';
+	import { initializeSttModel } from '../../stt/controller.js';
 
 	const stt = getSttState();
-	const recorder = getSttRecorder();
 
 	async function preloadModel() {
 		if (stt.modelReady || stt.modelLoading) return;
-		stt.modelLoading = true;
 		try {
-			recorder.onModelReady = () => {
-				stt.modelLoading = false;
-				stt.modelReady = true;
-				toast('Whisper model ready');
+			const status = await initializeSttModel();
+			if (status === 'ready') {
 				addLog('Whisper model pre-loaded', 'info');
-			};
-			recorder.onModelError = (err) => {
-				stt.modelLoading = false;
-				toast('Model failed: ' + err);
-			};
-			await recorder.initialize();
+			}
 		} catch (e: any) {
-			stt.modelLoading = false;
-			toast('Failed: ' + e.message);
+			console.error('[STT] Preload failed:', e);
 		}
 	}
 </script>

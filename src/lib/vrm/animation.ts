@@ -152,6 +152,13 @@ export async function loadMixamoAnimation(
 				const mixRestX = mixamoRigNode.position.x;
 				const mixRestY = mixamoRigNode.position.y;
 				const mixRestZ = mixamoRigNode.position.z;
+				let baseDx = track.values[0] - mixRestX;
+				let baseDy = track.values[1] - mixRestY;
+				let baseDz = track.values[2] - mixRestZ;
+				if (vrm.meta?.metaVersion === '0') {
+					baseDx = -baseDx;
+					baseDz = -baseDz;
+				}
 
 				const value = new Float32Array(track.values.length);
 				for (let i = 0; i < track.values.length; i += 3) {
@@ -159,6 +166,9 @@ export async function loadMixamoAnimation(
 					let dy = track.values[i + 1] - mixRestY;
 					let dz = track.values[i + 2] - mixRestZ;
 					if (vrm.meta?.metaVersion === '0') { dx = -dx; dz = -dz; }
+					dx -= baseDx;
+					dy -= baseDy;
+					dz -= baseDz;
 					// Lock horizontal root motion so looped clips stay centered in the scene.
 					dx = 0;
 					dz = 0;

@@ -87,6 +87,24 @@ export interface FishStreamErrorPayload {
 	error: string;
 }
 
+export interface ElectrobunWindowFrame {
+	x: number;
+	y: number;
+	width: number;
+	height: number;
+}
+
+export interface ElectrobunWindowInteractionState {
+	clickThrough: boolean;
+	alwaysOnTop: boolean;
+}
+
+export interface ShellControlActionPayload {
+	action: 'toggle-stt' | 'toggle-chat' | 'reveal-controls';
+	accelerator?: string;
+	source?: 'hotkey' | 'tray' | 'shell';
+}
+
 export interface WebWaifuElectrobunRPC {
 	bun: {
 		requests: {
@@ -122,6 +140,22 @@ export interface WebWaifuElectrobunRPC {
 				params: FishStreamAbortParams;
 				response: { ok: true };
 			};
+			windowGetFrame: {
+				params: {};
+				response: ElectrobunWindowFrame;
+			};
+			windowSetFrame: {
+				params: ElectrobunWindowFrame;
+				response: { ok: true };
+			};
+			windowStartMove: {
+				params: {};
+				response: { ok: true };
+			};
+			windowGetInteractionState: {
+				params: {};
+				response: ElectrobunWindowInteractionState;
+			};
 		};
 		messages: {
 			fishStreamChunk: FishStreamChunkPayload;
@@ -133,6 +167,8 @@ export interface WebWaifuElectrobunRPC {
 			fishStreamAudioChunk: FishStreamAudioChunkPayload;
 			fishStreamComplete: FishStreamCompletePayload;
 			fishStreamError: FishStreamErrorPayload;
+			windowInteractionChanged: ElectrobunWindowInteractionState;
+			shellControlAction: ShellControlActionPayload;
 		};
 	};
 }

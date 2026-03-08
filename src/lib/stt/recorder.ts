@@ -44,25 +44,48 @@ export class SttRecorder {
 		const data = chunk instanceof Float32Array ? chunk : new Float32Array(chunk);
 		this.audioChunks.push(new Float32Array(data));
 
-		// RMS-based silence detection
-		if (this.silenceDetection) {
-			let sum = 0;
-			for (let i = 0; i < data.length; i++) sum += data[i] * data[i];
-			const rms = Math.sqrt(sum / data.length);
-
-			if (rms >= this.silenceThreshold) {
-				this.hasSpoken = true;
-				this.silenceStart = null;
-			} else if (this.hasSpoken) {
-				// Only detect silence after user has spoken
-				if (!this.silenceStart) {
-					this.silenceStart = Date.now();
-				} else if (Date.now() - this.silenceStart > this.silenceTimeoutMs) {
-					this.silenceStart = null;
-					this.onAutoStop?.();
-				}
-			}
+		if (this.shouldTriggerEndOfSpeech(data)) {
+			this.onAutoStop?.();
 		}
+	}
+
+	private resetEndOfSpeechState() {
+		this.silenceStart = null;
+		this.hasSpoken = false;
+	}
+
+	private getChunkRms(data: Float32Array) {
+		let sum = 0;
+		for (let i = 0; i < data.length; i++) sum += data[i] * data[i];
+		return Math.sqrt(sum / data.length);
+	}
+
+	private shouldTriggerEndOfSpeech(data: Float32Array) {
+		if (!this.silenceDetection) return false;
+
+		const rms = this.getChunkRms(data);
+
+		if (rms >= this.silenceThreshold) {
+			this.hasSpoken = true;
+			this.silenceStart = null;
+			return false;
+		}
+
+		if (!this.hasSpoken) {
+			return false;
+		}
+
+		if (!this.silenceStart) {
+			this.silenceStart = Date.now();
+			return false;
+		}
+
+		if (Date.now() - this.silenceStart <= this.silenceTimeoutMs) {
+			return false;
+		}
+
+		this.silenceStart = null;
+		return true;
 	}
 
 	private setupScriptProcessorFallback() {
@@ -185,8 +208,7 @@ export class SttRecorder {
 			this.audioContext = new AudioContext({ sampleRate: 16000 });
 			this.sourceNode = this.audioContext.createMediaStreamSource(this.stream);
 			this.audioChunks = [];
-			this.silenceStart = null;
-			this.hasSpoken = false;
+			this.resetEndOfSpeechState();
 			await this.setupCaptureNode();
 			this.recording = true;
 		} catch (err: any) {

@@ -1,16 +1,12 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { getChat, getLlmSettings, getSttState, getMemoryState, toast, addLog } from '../stores/app.svelte.js';
-	import { getSttRecorder } from '../stt/recorder.js';
-	import { getMemoryManager } from '../memory/manager.js';
+	import { getChat, getLlmSettings, getSttState } from '../stores/app.svelte.js';
+	import { toggleSttRecording } from '../stt/controller.js';
 
 	let { onsend }: { onsend: (message: string) => void } = $props();
 	const chat = getChat();
 	const llm = getLlmSettings();
 	const stt = getSttState();
-	const memState = getMemoryState();
-	const recorder = getSttRecorder();
-	const memoryManager = getMemoryManager();
 
 	let textareaEl: HTMLTextAreaElement;
 	let keyboardOffset = $state(0);
@@ -33,93 +29,8 @@
 		};
 	});
 
-	function ensureRecorderCallbacks() {
-		recorder.onModelReady = () => {
-			stt.modelLoading = false;
-			stt.modelReady = true;
-			toast('Whisper model ready');
-			addLog('Whisper model loaded', 'info');
-		};
-		recorder.onModelError = (err) => {
-			stt.modelLoading = false;
-			toast('Whisper model failed: ' + err);
-		};
-		recorder.onError = (err) => {
-			toast('STT error: ' + err);
-			stt.recording = false;
-		};
-		recorder.onTranscript = (text) => {
-			addLog(`STT transcript: "${text.slice(0, 60)}"`, 'info');
-		};
-		// Silence detection auto-stop: same flow as manual stop
-		recorder.onAutoStop = () => {
-			if (!stt.recording) return;
-			handleMicClick();
-		};
-	}
-
 	async function handleMicClick() {
-		if (!stt.enabled) {
-			toast('STT is disabled');
-			return;
-		}
-
-		// If recording, stop and transcribe
-		if (stt.recording) {
-			stt.recording = false;
-			stt.transcribing = true;
-			try {
-				const transcript = await recorder.stopRecording();
-				if (transcript) {
-					chat.input = (chat.input ? chat.input + ' ' : '') + transcript;
-					addLog(`STT: "${transcript.slice(0, 60)}"`, 'info');
-					if (stt.autoSend && transcript.trim()) {
-						onsend(transcript.trim());
-						chat.input = '';
-					}
-				}
-			} catch (e: any) {
-				toast('Transcription failed: ' + e.message);
-			} finally {
-				stt.transcribing = false;
-			}
-			return;
-		}
-
-		// Always wire callbacks (handles auto-init case where ChatBar wasn't the one that initialized)
-		ensureRecorderCallbacks();
-
-		// Lazy-init if not yet initialized (idempotent — recorder.initialize() skips if already done)
-		if (!recorder.isModelReady() && !stt.modelLoading) {
-			stt.modelLoading = true;
-			try {
-				await recorder.initialize();
-			} catch (e: any) {
-				stt.modelLoading = false;
-				toast('Failed to init STT: ' + e.message);
-				return;
-			}
-
-			// Model still downloading — come back when ready
-			if (!recorder.isModelReady()) {
-				toast('Loading Whisper model...');
-				return;
-			}
-		}
-
-		if (!recorder.isModelReady()) {
-			toast('Whisper model still loading...');
-			return;
-		}
-
-		// Enable silence detection when autoSend is active
-		recorder.silenceDetection = stt.autoSend;
-		// Pre-warm embedding cache while user speaks (anticipating a query)
-		if (memState.enabled && memoryManager.modelReady) {
-			memoryManager.preloadEmbeddings().catch(() => {});
-		}
-		await recorder.startRecording();
-		stt.recording = true;
+		await toggleSttRecording('button');
 	}
 
 	function handleSend() {
@@ -212,7 +123,8 @@
 		bottom: clamp(8px, 4vh, 24px);
 		left: 50%;
 		transform: translateX(-50%) translateY(20px);
-		width: min(650px, 92vw);
+		width: min(720px, calc(100% - 64px));
+		max-width: calc(100% - 64px);
 		pointer-events: auto;
 		display: flex;
 		flex-direction: column;
@@ -325,14 +237,20 @@
 	.meta-item:hover { color: var(--text-main); }
 	.meta-item.active { color: var(--c-text-accent); text-shadow: 0 0 8px var(--c-text-accent); }
 	@media (max-width: 900px) {
-		#chat-container { width: 100%; bottom: 0; max-width: 100%; padding-bottom: var(--safe-bottom, 0px); }
+		#chat-container {
+			width: calc(100% - 16px);
+			max-width: calc(100% - 16px);
+			bottom: 0;
+			padding-bottom: var(--safe-bottom, 0px);
+		}
 		#chat-wrapper { clip-path: polygon(0 0, 100% 0, 100% 100%, 0 100%); }
 		#chat-inner { clip-path: none; }
 		.icon-btn { width: 44px; height: 44px; }
 	}
 	@media (min-width: 901px) and (max-width: 1280px), (min-width: 901px) and (max-height: 860px) {
 		#chat-container {
-			width: min(560px, calc(100vw - 96px));
+			width: min(620px, calc(100% - 88px));
+			max-width: calc(100% - 88px);
 			bottom: clamp(8px, 2vh, 16px);
 		}
 		#chat-inner {

@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { getChat, getLogs } from '../stores/app.svelte.js';
 	import { tick } from 'svelte';
+	let { visible = true }: { visible?: boolean } = $props();
 
 	const chat = getChat();
 	const logs = getLogs();
@@ -41,6 +42,7 @@
 <!-- Toggle button (always visible) -->
 <button
 	class="log-toggle"
+	class:visible={visible}
 	class:active={chat.logOpen}
 	title={chat.logOpen ? 'Close Chat Log' : 'Open Chat Log'}
 	onclick={(e) => { e.stopPropagation(); chat.toggleLog(); }}
@@ -106,10 +108,19 @@
 		align-items: center;
 		justify-content: center;
 		cursor: pointer;
-		pointer-events: auto;
+		pointer-events: none;
 		z-index: 50;
+		opacity: 0;
+		visibility: hidden;
+		transform: translateY(-10px);
 		transition: all 0.2s var(--ease-tech);
 		clip-path: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px);
+	}
+	.log-toggle.visible {
+		pointer-events: auto;
+		opacity: 1;
+		visibility: visible;
+		transform: translateY(0);
 	}
 	.log-toggle::before {
 		content: '';
@@ -126,7 +137,7 @@
 		z-index: -1;
 		clip-path: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px);
 	}
-	.log-toggle:hover { transform: scale(1.05); }
+	.log-toggle:hover { transform: translateY(0) scale(1.05); }
 	.log-toggle:hover::before { background: var(--c-text-accent); }
 	.log-toggle.active { color: var(--c-text-accent); }
 	.log-toggle.active::before { background: var(--c-text-accent); }
@@ -135,7 +146,7 @@
 		position: absolute;
 		top: 0;
 		left: 0;
-		width: min(380px, 85vw);
+		width: min(400px, calc(100% - 24px));
 		height: 100%;
 		background: var(--c-panel);
 		border-right: 1px solid var(--c-border);
@@ -321,11 +332,11 @@
 		}
 	}
 	@media (max-width: 640px) {
-		.log-panel { width: 100vw; }
+		.log-panel { width: 100%; }
 	}
 	@media (min-width: 901px) and (max-width: 1280px), (min-width: 901px) and (max-height: 860px) {
 		.log-panel {
-			width: min(320px, 38vw);
+			width: min(340px, calc(100% - 20px));
 		}
 		.log-header {
 			padding: 14px 16px 10px;

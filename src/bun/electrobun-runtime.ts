@@ -8,5 +8,6 @@
 // app actually needs right now.
 export { BrowserWindow } from '../../node_modules/electrobun/dist-win-x64/api/bun/core/BrowserWindow.ts';
 export { BrowserView } from '../../node_modules/electrobun/dist-win-x64/api/bun/core/BrowserView.ts';
+export { Tray } from '../../node_modules/electrobun/dist-win-x64/api/bun/core/Tray.ts';
 export { Updater } from '../../node_modules/electrobun/dist-win-x64/api/bun/core/Updater.ts';
-export { Screen } from '../../node_modules/electrobun/dist-win-x64/api/bun/proc/native.ts';
+export { GlobalShortcut, Screen, ffi } from '../../node_modules/electrobun/dist-win-x64/api/bun/proc/native.ts';

@@ -254,7 +254,7 @@
 		if (!endpoint) {
 			qwenVoices = [];
 			qwenVoicesStatus = 'Missing endpoint';
-			if (showToast) toast('Set Qwen endpoint first');
+			if (showToast) toast('Set Genie endpoint first');
 			return;
 		}
 
@@ -266,7 +266,7 @@
 		if (result.error) {
 			qwenVoices = [];
 			qwenVoicesStatus = `Load failed: ${result.error}`;
-			if (showToast) toast(`Qwen voices load failed: ${result.error}`);
+			if (showToast) toast(`Genie voices load failed: ${result.error}`);
 			qwenVoicesLoading = false;
 			return;
 		}
@@ -316,14 +316,14 @@
 		tts.qwenOverlapSamples = config.overlapSamples;
 		tts.qwenMaxFrames = config.maxFrames;
 		tts.qwenUseOptimizedDecode = config.useOptimizedDecode;
-		toast(`Qwen preset applied: ${config.label}`);
+		toast(`Genie preset applied: ${config.label}`);
 	}
 
 	function onQwenPresetChange(e: Event) {
 		const preset = (e.target as HTMLSelectElement).value as QwenQualityPreset;
 		if (preset === 'custom') {
 			tts.qwenQualityPreset = 'custom';
-			toast('Qwen preset set to custom');
+			toast('Genie preset set to custom');
 			return;
 		}
 		applyQwenPreset(preset);
@@ -417,7 +417,7 @@
 
 	let statusText = $derived(
 		tts.provider === 'fish' ? 'Fish Audio (Cloud API)' :
-		tts.provider === 'qwen' ? `Qwen (Local Server: ${tts.qwenEndpoint})` :
+		tts.provider === 'qwen' ? `Genie (Local Server: ${tts.qwenEndpoint})` :
 		tts.provider === 'kokoro' ? (tts.kokoroReady ? 'Kokoro (Local, 28 voices)' : 'Kokoro (Not initialized)') :
 		'Unknown'
 	);
@@ -428,7 +428,7 @@
 	<select class="select-tech" onchange={onProviderChange}>
 		<option value="kokoro" selected={tts.provider === 'kokoro'} disabled={isMobile}>Kokoro (Local/WebGPU){isMobile ? ' — N/A on mobile' : ''}</option>
 		<option value="fish" selected={tts.provider === 'fish'}>Fish Audio (Cloud)</option>
-		<option value="qwen" selected={tts.provider === 'qwen'}>Qwen (Local GPU Server)</option>
+		<option value="qwen" selected={tts.provider === 'qwen'}>Genie (Local Voice Cloning)</option>
 	</select>
 	{#if isMobile}
 		<small class="hint" style="color: var(--danger);">Kokoro requires WebGPU — not available on mobile. Use Fish Audio.</small>
@@ -556,13 +556,13 @@
 
 {#if showQwenOptions}
 	<div class="control-group">
-		<div class="control-label">Qwen Endpoint</div>
-		<input type="text" class="input-tech" bind:value={tts.qwenEndpoint} placeholder="http://localhost:8880" />
-		<small class="hint">Local FastAPI server base URL</small>
+		<div class="control-label">Genie Endpoint</div>
+		<input type="text" class="input-tech" bind:value={tts.qwenEndpoint} placeholder="http://localhost:3088" />
+		<small class="hint">Local Genie bridge base URL</small>
 	</div>
 
 	<div class="control-group">
-		<div class="control-label">Qwen Language</div>
+		<div class="control-label">Genie Output Language</div>
 		<select class="select-tech" bind:value={tts.qwenLanguage}>
 			{#each qwenLanguageOptions as lang}
 				<option value={lang}>{lang}</option>
@@ -571,7 +571,7 @@
 	</div>
 
 	<div class="control-group">
-		<div class="control-label">Qwen Quality Preset</div>
+		<div class="control-label">Genie Quality Preset</div>
 		<select class="select-tech" bind:value={tts.qwenQualityPreset} onchange={onQwenPresetChange}>
 			<option value="fast">Fast (low latency)</option>
 			<option value="balanced">Balanced</option>
@@ -587,7 +587,7 @@
 	</div>
 
 	<div class="control-group">
-		<div class="control-label">Qwen Voice Preset</div>
+		<div class="control-label">Genie Voice Preset</div>
 		<div class="ref-audio-row">
 			<button class="btn-init" onclick={() => loadQwenVoices()} disabled={qwenVoicesLoading || qwenStatus === 'checking'}>
 				{qwenVoicesLoading ? 'Loading...' : 'Load Voices'}
@@ -603,13 +603,13 @@
 	</div>
 
 	<div class="control-group">
-		<div class="control-label">Qwen Voice ID</div>
+		<div class="control-label">Genie Voice ID</div>
 		<input type="text" class="input-tech" bind:value={tts.qwenVoiceId} placeholder="Preset ID from manager (optional)" />
-		<small class="hint">Advanced/manual override. Empty uses server default active voice.</small>
+		<small class="hint">Advanced/manual override. Empty uses the server's active Genie preset.</small>
 	</div>
 
 	<div class="control-group">
-		<div class="control-label">Qwen Server Status</div>
+		<div class="control-label">Genie Server Status</div>
 		<div class="kokoro-status">
 			<button class="btn-init" onclick={checkQwenServer} disabled={qwenStatus === 'checking'}>
 				{qwenStatus === 'checking' ? 'Checking...' : 'Check Server'}
@@ -638,7 +638,7 @@
 	<div class="info-box">
 		<strong class="accent">Kokoro:</strong> 28 voices, runs locally via WebGPU/WASM. No server needed!<br>
 		<strong class="accent">Fish Audio:</strong> High quality cloud TTS with custom voice cloning. Requires API key.<br>
-		<strong class="accent">Qwen:</strong> Local Python GPU server with voice cloning via reference audio.<br>
+		<strong class="accent">Genie:</strong> Local voice-cloning bridge with Mika as the default base preset.<br>
 		<strong class="status">Current:</strong> <span>{statusText}</span>
 	</div>
 </div>

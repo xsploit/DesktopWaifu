@@ -8,6 +8,12 @@
 	import ChatLog from '$lib/components/ChatLog.svelte';
 	import SpeechBubble from '$lib/components/SpeechBubble.svelte';
 	import SplashModal from '$lib/components/SplashModal.svelte';
+	import { getElectrobunRpc } from '$lib/electrobun/bridge.js';
+	import type {
+		ElectrobunWindowFrame,
+		ElectrobunWindowInteractionState,
+		ShellControlActionPayload
+	} from '$lib/electrobun/rpc-schema.js';
 	import {
 		getChat,
 		getVrmState,
@@ -28,7 +34,7 @@
 	import { getStorageManager } from '$lib/storage/index.js';
 	import { getAnimationSequencer, DEFAULT_ANIMATIONS } from '$lib/vrm/sequencer.js';
 	import { getMemoryManager } from '$lib/memory/manager.js';
-	import { getSttRecorder } from '$lib/stt/recorder.js';
+	import { configureSttController, initializeSttModel, toggleSttRecording } from '$lib/stt/controller.js';
 	import type { ChatMessage } from '$lib/llm/client.js';
 
 	const chat = getChat();
@@ -45,12 +51,153 @@
 	const sequencer = getAnimationSequencer();
 	const memState = getMemoryState();
 	const memoryManager = getMemoryManager();
-	const UI_DESIGN_WIDTH = 1500;
-	const UI_DESIGN_HEIGHT = 860;
+	const UI_STAGE_BASE_WIDTH = 1760;
+	const UI_STAGE_BASE_HEIGHT = 980;
+	const UI_STAGE_MARGIN = 56;
+	const MIN_WINDOW_WIDTH = 1100;
+	const MIN_WINDOW_HEIGHT = 720;
+
+	type ResizeDirection = 'n' | 's' | 'e' | 'w' | 'nw' | 'ne' | 'sw' | 'se';
 
 	let vrmCanvas: VrmCanvas;
 	let uiScale = $state(1);
+	let uiStageWidth = $state(UI_STAGE_BASE_WIDTH);
+	let uiStageHeight = $state(UI_STAGE_BASE_HEIGHT);
+	let interactiveChromeVisible = $state(true);
+	let interactiveChromeHideTimer: ReturnType<typeof setTimeout> | null = null;
+	let windowInteraction = $state<ElectrobunWindowInteractionState>({
+		clickThrough: false,
+		alwaysOnTop: true
+	});
 	const storage = getStorageManager();
+	const INTERACTIVE_CHROME_IDLE_MS = 10000;
+
+	function clearInteractiveChromeHideTimer() {
+		if (interactiveChromeHideTimer) {
+			clearTimeout(interactiveChromeHideTimer);
+			interactiveChromeHideTimer = null;
+		}
+	}
+
+	function scheduleInteractiveChromeHide() {
+		clearInteractiveChromeHideTimer();
+		if (windowInteraction.clickThrough) return;
+		interactiveChromeHideTimer = setTimeout(() => {
+			interactiveChromeVisible = false;
+		}, INTERACTIVE_CHROME_IDLE_MS);
+	}
+
+	function revealInteractiveChrome(force = false) {
+		if (windowInteraction.clickThrough && !force) {
+			return;
+		}
+		interactiveChromeVisible = true;
+		scheduleInteractiveChromeHide();
+	}
+
+	function isInteractiveSurface(target: EventTarget | null): boolean {
+		if (!(target instanceof Element)) return false;
+		return !!target.closest(
+			[
+				'#settings-panel',
+				'#chat-container',
+				'.log-toggle',
+				'.log-panel',
+				'.speech-bubble',
+				'.splash-overlay',
+				'#menu-fab',
+				'.mgr-btn',
+				'.resize-hitbox',
+				'button',
+				'a',
+				'input',
+				'textarea',
+				'select',
+				'label',
+				'summary'
+			].join(', ')
+		);
+	}
+
+	function applyWindowInteractionState(
+		nextState: ElectrobunWindowInteractionState,
+		options: { revealOnInteractive?: boolean } = {}
+	) {
+		const previousClickThrough = windowInteraction.clickThrough;
+		windowInteraction = nextState;
+
+		if (nextState.clickThrough) {
+			panel.open = false;
+			chat.logOpen = false;
+			clearInteractiveChromeHideTimer();
+			interactiveChromeVisible = false;
+			return;
+		}
+
+		if (options.revealOnInteractive || previousClickThrough) {
+			revealInteractiveChrome(true);
+		}
+	}
+
+	async function startWindowResize(direction: ResizeDirection, event: PointerEvent) {
+		event.preventDefault();
+		event.stopPropagation();
+		revealInteractiveChrome(true);
+
+		const rpc = await getElectrobunRpc();
+		if (!rpc) return;
+
+		const startFrame = await rpc.request.windowGetFrame({});
+		const startScreenX = event.screenX;
+		const startScreenY = event.screenY;
+		const scaleX = startFrame.width / Math.max(window.innerWidth || 1, 1);
+		const scaleY = startFrame.height / Math.max(window.innerHeight || 1, 1);
+		let nextFrame: ElectrobunWindowFrame = { ...startFrame };
+		let rafId = 0;
+
+		const flushResize = () => {
+			rafId = 0;
+			void rpc.request.windowSetFrame(nextFrame);
+		};
+
+		const onPointerMove = (moveEvent: PointerEvent) => {
+			const dx = Math.round((moveEvent.screenX - startScreenX) * scaleX);
+			const dy = Math.round((moveEvent.screenY - startScreenY) * scaleY);
+			const frame = { ...startFrame };
+
+			if (direction.includes('e')) {
+				frame.width = Math.max(MIN_WINDOW_WIDTH, startFrame.width + dx);
+			}
+			if (direction.includes('s')) {
+				frame.height = Math.max(MIN_WINDOW_HEIGHT, startFrame.height + dy);
+			}
+			if (direction.includes('w')) {
+				frame.width = Math.max(MIN_WINDOW_WIDTH, startFrame.width - dx);
+				frame.x = startFrame.x + (startFrame.width - frame.width);
+			}
+			if (direction.includes('n')) {
+				frame.height = Math.max(MIN_WINDOW_HEIGHT, startFrame.height - dy);
+				frame.y = startFrame.y + (startFrame.height - frame.height);
+			}
+
+			nextFrame = frame;
+			if (!rafId) {
+				rafId = requestAnimationFrame(flushResize);
+			}
+		};
+
+		const onPointerUp = () => {
+			window.removeEventListener('pointermove', onPointerMove);
+			window.removeEventListener('pointerup', onPointerUp);
+			if (rafId) {
+				cancelAnimationFrame(rafId);
+			}
+			void rpc.request.windowSetFrame(nextFrame);
+		};
+
+		window.addEventListener('pointermove', onPointerMove);
+		window.addEventListener('pointerup', onPointerUp, { once: true });
+	}
 
 	function revokeBlobUrl(url: string | null | undefined) {
 		if (url && url.startsWith('blob:')) {
@@ -249,15 +396,85 @@
 	}
 
 	onMount(() => {
+		configureSttController({ onSend: handleSend });
+
 		function updateUiScale() {
 			const width = Math.max(1, window.innerWidth || 1);
 			const height = Math.max(1, window.innerHeight || 1);
-			const scale = Math.min(1, width / UI_DESIGN_WIDTH, height / UI_DESIGN_HEIGHT);
-			uiScale = Math.max(0.62, scale);
+			const availableWidth = Math.max(1, width - UI_STAGE_MARGIN);
+			const availableHeight = Math.max(1, height - UI_STAGE_MARGIN);
+			const scale = Math.min(
+				availableWidth / UI_STAGE_BASE_WIDTH,
+				availableHeight / UI_STAGE_BASE_HEIGHT
+			);
+			uiScale = Math.min(1.18, scale);
+			uiStageWidth = availableWidth / Math.max(uiScale, 0.001);
+			uiStageHeight = availableHeight / Math.max(uiScale, 0.001);
 		}
 
+		function handleUiActivity() {
+			revealInteractiveChrome();
+		}
+
+		function handleChatVisibilityToggle() {
+			chat.toggleVisible();
+		}
+
+		function handleGlobalKeydown(event: KeyboardEvent) {
+			handleUiActivity();
+			if (event.key === 'F6') {
+				event.preventDefault();
+				handleChatVisibilityToggle();
+			}
+		}
+
+		async function handleShellControlAction(payload: ShellControlActionPayload) {
+			if (payload.action === 'toggle-stt') {
+				await toggleSttRecording('hotkey');
+				return;
+			}
+
+			if (payload.action === 'toggle-chat') {
+				handleChatVisibilityToggle();
+				return;
+			}
+
+			if (payload.action === 'reveal-controls') {
+				revealInteractiveChrome(true);
+			}
+		}
+
+		const rpcCleanup: Array<() => void> = [];
+
+		void (async () => {
+			const rpc = await getElectrobunRpc();
+			if (!rpc) return;
+
+			const onWindowInteractionChanged = (payload: ElectrobunWindowInteractionState) => {
+				applyWindowInteractionState(payload, { revealOnInteractive: false });
+			};
+			const onShellControlAction = (payload: ShellControlActionPayload) => {
+				void handleShellControlAction(payload);
+			};
+
+			rpc.addMessageListener('windowInteractionChanged', onWindowInteractionChanged);
+			rpc.addMessageListener('shellControlAction', onShellControlAction);
+			rpcCleanup.push(() => {
+				rpc.removeMessageListener('windowInteractionChanged', onWindowInteractionChanged);
+				rpc.removeMessageListener('shellControlAction', onShellControlAction);
+			});
+
+			const initialInteraction = await rpc.request.windowGetInteractionState({});
+			applyWindowInteractionState(initialInteraction, { revealOnInteractive: false });
+		})();
+
 		updateUiScale();
+		revealInteractiveChrome(true);
 		window.addEventListener('resize', updateUiScale);
+		window.addEventListener('pointermove', handleUiActivity, { passive: true });
+		window.addEventListener('pointerdown', handleUiActivity, { passive: true });
+		window.addEventListener('touchstart', handleUiActivity, { passive: true });
+		window.addEventListener('keydown', handleGlobalKeydown);
 
 		// Initialize storage and load saved settings
 		storage.initialize().then(async () => {
@@ -315,19 +532,7 @@
 
 					// Auto-init Whisper model if STT was enabled
 					if (state.stt.enabled) {
-						const recorder = getSttRecorder();
-						sttState.modelLoading = true;
-						recorder.onModelReady = () => {
-							sttState.modelLoading = false;
-							sttState.modelReady = true;
-							addLog('Whisper model auto-loaded', 'info');
-						};
-						recorder.onModelError = (err) => {
-							sttState.modelLoading = false;
-							console.error('[STT] Auto-init failed:', err);
-						};
-						recorder.initialize().catch((e) => {
-							sttState.modelLoading = false;
+						void initializeSttModel().catch((e) => {
 							console.error('[STT] Auto-init failed:', e);
 						});
 					}
@@ -702,7 +907,13 @@
 		toast('WEBWAIFU 3 initialized');
 
 		return () => {
+			clearInteractiveChromeHideTimer();
 			window.removeEventListener('resize', updateUiScale);
+			window.removeEventListener('pointermove', handleUiActivity);
+			window.removeEventListener('pointerdown', handleUiActivity);
+			window.removeEventListener('touchstart', handleUiActivity);
+			window.removeEventListener('keydown', handleGlobalKeydown);
+			rpcCleanup.forEach((dispose) => dispose());
 			window.removeEventListener('webwaifu3:load-vrm', onLoadVrm);
 			window.removeEventListener('webwaifu3:load-anim', onLoadAnim);
 			window.removeEventListener('webwaifu3:toggle-pass', onTogglePass);
@@ -862,18 +1073,34 @@
 
 <!-- svelte-ignore a11y_click_events_have_key_events -->
 <!-- svelte-ignore a11y_no_static_element_interactions -->
-<div class="shell" onclick={handleClickOutside}>
+<div class="shell" class:click-through={windowInteraction.clickThrough} onclick={handleClickOutside}>
 	<VrmCanvas bind:this={vrmCanvas} />
-	<div class="ui-layer" style={`--ui-scale: ${uiScale};`}>
-		<a href="/manager" class="mgr-btn" title="Waifu Manager">MGR</a>
-		<ChatLog />
-		<SpeechBubble />
-		<MenuFab />
-		<SettingsPanel />
-		<ChatBar onsend={handleSend} />
-		<Toast />
+	<div class="drag-surface electrobun-webkit-app-region-drag"></div>
+	<div class="resize-hitbox edge-n" onpointerdown={(event) => startWindowResize('n', event)}></div>
+	<div class="resize-hitbox edge-s" onpointerdown={(event) => startWindowResize('s', event)}></div>
+	<div class="resize-hitbox edge-e" onpointerdown={(event) => startWindowResize('e', event)}></div>
+	<div class="resize-hitbox edge-w" onpointerdown={(event) => startWindowResize('w', event)}></div>
+	<div class="resize-hitbox corner-nw" onpointerdown={(event) => startWindowResize('nw', event)}></div>
+	<div class="resize-hitbox corner-ne" onpointerdown={(event) => startWindowResize('ne', event)}></div>
+	<div class="resize-hitbox corner-sw" onpointerdown={(event) => startWindowResize('sw', event)}></div>
+	<div class="resize-hitbox corner-se" onpointerdown={(event) => startWindowResize('se', event)}></div>
+	<div class="ui-viewport">
+		<div
+			class="ui-stage"
+			style={`--ui-scale: ${uiScale}; --ui-stage-width: ${uiStageWidth}px; --ui-stage-height: ${uiStageHeight}px;`}
+		>
+			<div class="top-controls" class:visible={interactiveChromeVisible}>
+				<a href="/manager" class="mgr-btn" title="Waifu Manager">MGR</a>
+			</div>
+			<ChatLog visible={interactiveChromeVisible} />
+			<SpeechBubble />
+			<MenuFab visible={interactiveChromeVisible} />
+			<SettingsPanel />
+			<ChatBar onsend={handleSend} />
+			<Toast />
+			<SplashModal />
+		</div>
 	</div>
-	<SplashModal />
 </div>
 
 <style>
@@ -883,25 +1110,96 @@
 		background: var(--bg-canvas);
 	}
 
-	.ui-layer {
+	.drag-surface {
 		position: absolute;
-		top: 0;
-		left: 0;
-		width: calc(100% / var(--ui-scale, 1));
-		height: calc(100% / var(--ui-scale, 1));
-		transform: scale(var(--ui-scale, 1));
-		transform-origin: top left;
-		pointer-events: none;
-		z-index: 10;
+		inset: 0;
+		z-index: 1;
+		pointer-events: auto;
 	}
 
-	.mgr-btn {
+	.shell.click-through .drag-surface,
+	.shell.click-through .resize-hitbox {
+		pointer-events: none;
+	}
+
+	.ui-viewport {
+		position: absolute;
+		inset: 0;
+		overflow: hidden;
+		z-index: 10;
+		pointer-events: none;
+	}
+
+	.ui-stage {
+		position: absolute;
+		top: 50%;
+		left: 50%;
+		width: var(--ui-stage-width, 1760px);
+		height: var(--ui-stage-height, 980px);
+		transform: translate(-50%, -50%) scale(var(--ui-scale, 1));
+		transform-origin: center center;
+		pointer-events: none;
+		will-change: transform;
+	}
+
+	.top-controls {
 		position: absolute;
 		top: clamp(12px, 2vh, 24px);
 		left: 50%;
-		transform: translateX(-50%);
-		pointer-events: auto;
+		display: flex;
+		align-items: center;
+		transform: translateX(-50%) translateY(-12px);
+		opacity: 0;
+		pointer-events: none;
+		transition:
+			opacity 180ms ease,
+			transform 220ms ease;
 		z-index: 50;
+	}
+
+	.top-controls.visible {
+		transform: translateX(-50%) translateY(0);
+		opacity: 1;
+		pointer-events: auto;
+	}
+
+	.mgr-btn {
+		position: relative;
+		padding: 10px 16px;
+		color: var(--text-dim);
+		background: color-mix(in oklab, var(--c-panel) 92%, transparent);
+		border: 1px solid color-mix(in oklab, var(--c-border) 85%, transparent);
+		clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px);
+	}
+
+	.mgr-btn::before,
+	.mgr-btn::after {
+		content: '';
+		position: absolute;
+		width: 10px;
+		height: 10px;
+		pointer-events: none;
+		opacity: 0.85;
+	}
+
+	.mgr-btn::before {
+		top: 0;
+		left: 0;
+		background: linear-gradient(135deg, transparent 48%, color-mix(in oklab, var(--c-text-accent) 62%, var(--c-border)) 50%);
+	}
+
+	.mgr-btn::after {
+		right: 0;
+		bottom: 0;
+		background: linear-gradient(315deg, transparent 48%, color-mix(in oklab, var(--c-text-accent) 62%, var(--c-border)) 50%);
+	}
+
+	.mgr-btn {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		min-width: 84px;
+		pointer-events: auto;
 		font-family: var(--font-tech);
 		font-size: 0.7rem;
 		font-weight: 600;
@@ -918,18 +1216,97 @@
 	.mgr-btn:hover {
 		color: var(--c-text-accent);
 		border-color: var(--c-text-accent);
-		transform: translateX(-50%) scale(1.05);
+		background: color-mix(in oklab, var(--c-panel) 80%, transparent);
+	}
+
+	.resize-hitbox {
+		position: absolute;
+		z-index: 80;
+		pointer-events: auto;
+		background: transparent;
+	}
+
+	.edge-n,
+	.edge-s {
+		left: 12px;
+		right: 12px;
+		height: 8px;
+	}
+
+	.edge-e,
+	.edge-w {
+		top: 12px;
+		bottom: 12px;
+		width: 8px;
+	}
+
+	.edge-n {
+		top: 0;
+		cursor: ns-resize;
+	}
+
+	.edge-s {
+		bottom: 0;
+		cursor: ns-resize;
+	}
+
+	.edge-e {
+		right: 0;
+		cursor: ew-resize;
+	}
+
+	.edge-w {
+		left: 0;
+		cursor: ew-resize;
+	}
+
+	.corner-nw,
+	.corner-ne,
+	.corner-sw,
+	.corner-se {
+		width: 18px;
+		height: 18px;
+	}
+
+	.corner-nw {
+		top: 0;
+		left: 0;
+		cursor: nwse-resize;
+	}
+
+	.corner-ne {
+		top: 0;
+		right: 0;
+		cursor: nesw-resize;
+	}
+
+	.corner-sw {
+		left: 0;
+		bottom: 0;
+		cursor: nesw-resize;
+	}
+
+	.corner-se {
+		right: 0;
+		bottom: 0;
+		cursor: nwse-resize;
 	}
 	@media (max-width: 900px) {
-		.mgr-btn {
+		.top-controls {
 			top: calc(clamp(12px, 2vh, 24px) + var(--safe-top, 0px));
 		}
 	}
 	@media (min-width: 901px) and (max-width: 1280px), (min-width: 901px) and (max-height: 860px) {
-		.mgr-btn {
+		.top-controls {
 			top: clamp(10px, 1.8vh, 18px);
+		}
+
+		.mgr-btn {
 			padding: 8px 12px;
 			font-size: 0.62rem;
+		}
+
+		.mgr-btn {
 			letter-spacing: 0.12em;
 		}
 	}

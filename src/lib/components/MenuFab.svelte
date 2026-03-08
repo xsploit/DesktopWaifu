@@ -1,10 +1,12 @@
 <script lang="ts">
 	import { getSettingsPanel } from '../stores/app.svelte.js';
+	let { visible = true }: { visible?: boolean } = $props();
 	const panel = getSettingsPanel();
 </script>
 
 <button
 	id="menu-fab"
+	class:visible={visible}
 	class:active={panel.open}
 	title="Menu"
 	onclick={(e) => { e.stopPropagation(); panel.toggle(); }}
@@ -32,8 +34,18 @@
 		cursor: pointer;
 		pointer-events: auto;
 		z-index: 50;
+		opacity: 0;
+		visibility: hidden;
+		pointer-events: none;
+		transform: translateY(-10px);
 		transition: all 0.2s var(--ease-tech);
 		clip-path: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px);
+	}
+	#menu-fab.visible {
+		opacity: 1;
+		visibility: visible;
+		pointer-events: auto;
+		transform: translateY(0);
 	}
 	#menu-fab::before {
 		content: '';
@@ -50,7 +62,7 @@
 		z-index: -1;
 		clip-path: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px);
 	}
-	#menu-fab:hover { transform: scale(1.05); }
+	#menu-fab:hover { transform: translateY(0) scale(1.05); }
 	#menu-fab:hover::before { background: var(--c-text-accent); }
 	#menu-fab svg { width: 24px; height: 24px; transition: transform 0.4s var(--ease-tech); }
 	#menu-fab.active svg { transform: rotate(90deg); }

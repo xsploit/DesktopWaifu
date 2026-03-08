@@ -64,7 +64,7 @@
 		bottom: calc(80px + var(--safe-bottom, 0px));
 		left: 50%;
 		transform: translateX(-50%);
-		width: min(92vw, 500px);
+		width: min(560px, calc(100% - 120px));
 		pointer-events: auto;
 		z-index: 45;
 		animation: bubbleIn 0.25s var(--ease-tech);
@@ -133,7 +133,7 @@
 		.speech-bubble {
 			display: block;
 			bottom: calc(70px + var(--safe-bottom, 0px));
-			width: min(72vw, 420px);
+			width: min(460px, calc(100% - 140px));
 		}
 		.bubble-content {
 			max-height: 132px;
