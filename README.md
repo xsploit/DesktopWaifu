@@ -111,12 +111,24 @@ That means desktop-specific behavior should be fixed here, not backported mental
 - Python environment for Genie compat server if you want local voice cloning
 - Windows is the currently validated desktop target
 
+> **Linux users:** you must install the `libayatana-appindicator3` library (package names vary by distro, e.g. `libayatana-appindicator3` on Debian/Ubuntu) so the Electrobun native wrapper can load. Without it the desktop shell will crash with `libayatana-appindicator3.so.1: cannot open shared object file`.
+
 ### Dev run
 
 ```bash
 bun install
 bun run dev
 ```
+
+> *The frontend server is started on `https://localhost:5173` when run
+> standalone, but HTTP is used when the desktop shell launches it (the
+> `ELECTROBUN_DEV` environment variable disables `basicSsl`).  It is
+> invoked with `--port 5173 --strictPort`.  If the port is already
+> in use the `dev` command will abort so you can terminate the
+> conflicting process and try again.  The Electrobun shell is launched
+> concurrently and simply points at the configured URL when in the
+> `dev` channel; it no longer probes for a running server, which
+> removes the “file not found” fallback errors seen on Linux.*
 
 ### Stable release build
 

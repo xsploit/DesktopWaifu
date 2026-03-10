@@ -9,19 +9,30 @@ import type {
 } from '../lib/electrobun/rpc-schema.js';
 import { setWindowClickThrough, refreshWindowHitTest } from './windows-click-through';
 
-const DEV_SERVER_PORT = 5173;
-const DEV_SERVER_URL = `http://localhost:${DEV_SERVER_PORT}`;
+// dev server port can be overridden by environment (set by dev:web script)
+const DEV_SERVER_PORT = process.env.PORT ? Number(process.env.PORT) : 5173;
+// the `dev` script disables TLS when running under the Electrobun shell so
+// that the webview doesn't complain about the self-signed certificate.  use
+// http:// instead of https:// when ELECTROBUN_DEV is truthy.
+const DEV_SERVER_PROTOCOL = process.env.ELECTROBUN_DEV ? 'http' : 'https';
+const DEV_SERVER_URL = `${DEV_SERVER_PROTOCOL}://localhost:${DEV_SERVER_PORT}`;
 
 async function getMainViewUrl(): Promise<string> {
 	const channel = await Updater.localInfo.channel();
 	if (channel === 'dev') {
-		try {
-			await fetch(DEV_SERVER_URL, { method: 'HEAD' });
-			console.log(`HMR enabled: using Vite dev server at ${DEV_SERVER_URL}`);
-			return DEV_SERVER_URL;
-		} catch {
-			console.log('Vite dev server not running. Run "bun run dev:hmr" for HMR.');
+		// wait up to a few seconds for the vite dev server to accept connections
+		const deadline = Date.now() + 5000;
+		while (Date.now() < deadline) {
+			try {
+				await fetch(DEV_SERVER_URL, { method: 'HEAD' });
+				break; // success
+			} catch {
+				// keep retrying until timeout
+				await new Promise((r) => setTimeout(r, 200));
+			}
 		}
+		console.log(`Dev channel: using Vite dev server at ${DEV_SERVER_URL}`);
+		return DEV_SERVER_URL;
 	}
 
 	return 'views://mainview/index.html';

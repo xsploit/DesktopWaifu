@@ -53,7 +53,9 @@ export async function getElectrobunRpc() {
 	if (rpcPromise) return rpcPromise;
 
 	rpcPromise = (async () => {
-		const mod = await import('../../../node_modules/electrobun/dist-win-x64/api/browser/index.ts') as unknown as BrowserElectrobunModule;
+		// bypass package export restrictions by importing directly from node_modules
+		// path; this works on every OS and avoids missing-export errors.
+		const mod = await import('../../../node_modules/electrobun/dist/api/browser/index.ts') as unknown as BrowserElectrobunModule;
 		const rpc = mod.Electroview.defineRPC<WebWaifuElectrobunRPC>({
 			handlers: {
 				requests: {},

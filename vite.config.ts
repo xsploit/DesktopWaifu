@@ -4,8 +4,12 @@ import basicSsl from '@vitejs/plugin-basic-ssl';
 import { defineConfig } from 'vite';
 
 export default defineConfig(({ mode }) => ({
+	// when the Electrobun desktop shell manages the app we'll run the
+	// frontend on plain HTTP to avoid self-signed certificate errors in the
+	// WebKit view.  The `ELECTROBUN_DEV` variable is set by the npm scripts
+	// below.
 	plugins: [
-		...(mode === 'development' ? [basicSsl()] : []),
+		...(mode === 'development' && !process.env.ELECTROBUN_DEV ? [basicSsl()] : []),
 		tailwindcss(),
 		sveltekit()
 	],
