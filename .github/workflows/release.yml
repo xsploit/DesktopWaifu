@@ -61,7 +61,7 @@ jobs:
           curl -L -o appimagetool "${URL}"
           chmod +x appimagetool
           # we will invoke this binary directly later; no PATH changes required
-          ./appimagetool --version || true
+          APPIMAGE_EXTRACT_AND_RUN=1 ./appimagetool --version || true
 
       # Windows only: write manifests and run postPackage fix
       - name: Write Windows manifests
@@ -108,7 +108,7 @@ jobs:
             fi
 
             echo "Generating AppImage from $BUILD_DIR"
-            $TOOL "$BUILD_DIR" "dist-release/DesktopWaifu-Linux-x64.AppImage"
+            APPIMAGE_EXTRACT_AND_RUN=1 $TOOL "$BUILD_DIR" "dist-release/DesktopWaifu-Linux-x64.AppImage"
             echo "AppImage creation exit code: $?"
             ls -lh dist-release || true
           else
