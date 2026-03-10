@@ -53,12 +53,16 @@ jobs:
       - name: Build Electrobun app (stable)
         run: bunx electrobun build --env=stable
 
-      # On Linux, ensure appimagetool is available so we can produce an AppImage
-      - name: Install AppImageTool
+      # On Linux, obtain a working AppImageTool binary (apt repo doesn't
+      # contain it). We download the official AppImage and make it executable.
+      - name: Acquire AppImageTool
         if: matrix.platform == 'linux'
         run: |
-          sudo apt-get update
-          sudo apt-get install -y appimagetool
+          URL="https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage"
+          curl -L -o appimagetool "${URL}"
+          chmod +x appimagetool
+          sudo mv appimagetool /usr/local/bin/appimagetool
+          appimagetool --version || true
 
       # Windows only: write manifests and run postPackage fix
       - name: Write Windows manifests
