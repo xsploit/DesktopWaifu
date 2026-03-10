@@ -35,10 +35,7 @@ if (!buildDir || !artifactDir || !appName) {
 }
 
 const projectRoot = process.cwd();
-const debugExtractorPath = join(
-	projectRoot,
-	'../../QWENSTUDIO/electrobun/package/src/extractor/zig-out/bin/extractor.exe',
-);
+const debugExtractorPath = join(projectRoot, 'node_modules/electrobun/src/extractor/zig-out/bin/extractor.exe');
 
 if (!existsSync(debugExtractorPath)) {
 	fail(`Debug extractor not found: ${debugExtractorPath}`);
