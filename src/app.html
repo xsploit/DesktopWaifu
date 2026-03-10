@@ -23,15 +23,19 @@
 		<meta name="theme-color" content="#0a0a0a" />
 		<script>
 			(function () {
+				const search = window.location.search || '';
 				const isElectrobunShell =
 					window.location.protocol === 'views:' ||
 					window.location.protocol === 'file:' ||
 					Boolean(window.__electrobun) ||
-					Boolean(window.__electrobunWebviewId);
+					Boolean(window.__electrobunWebviewId) ||
+					search.includes('desktop=1');
 				if (isElectrobunShell) {
 					document.documentElement.dataset.desktopShell = 'electrobun';
-				}
-
+				// force transparent backgrounds in case CSS rules fail to apply
+				const s = document.createElement('style');
+				s.innerHTML = 'html, body { background: transparent !important; }';
+				document.head.appendChild(s);
 				const isDesktopCustomScheme = window.location.protocol === 'views:' || window.location.protocol === 'file:';
 				const path = window.location.pathname || '';
 				if (!isDesktopCustomScheme || !/\/?index\.html$/.test(path)) return;

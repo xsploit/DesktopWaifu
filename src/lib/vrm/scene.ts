@@ -13,7 +13,10 @@ export interface SceneRefs {
 }
 
 export function isDesktopShell() {
-	return window.location.protocol === 'views:' || window.location.protocol === 'file:';
+	if (window.location.protocol === 'views:' || window.location.protocol === 'file:') return true;
+	if (document.documentElement.dataset.desktopShell === 'electrobun') return true;
+	if (window.location.search.includes('desktop=1')) return true;
+	return false;
 }
 
 export function getRenderPixelRatio() {

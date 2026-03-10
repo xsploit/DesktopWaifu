@@ -31,14 +31,26 @@ async function getMainViewUrl(): Promise<string> {
 				await new Promise((r) => setTimeout(r, 200));
 			}
 		}
-		console.log(`Dev channel: using Vite dev server at ${DEV_SERVER_URL}`);
-		return DEV_SERVER_URL;
+		const urlWithFlag = `${DEV_SERVER_URL}${DEV_SERVER_URL.includes('?') ? '&' : '?'}desktop=1`;
+		console.log(`Dev channel: using Vite dev server at ${urlWithFlag}`);
+		return urlWithFlag;
 	}
 
 	return 'views://mainview/index.html';
 }
 
 const url = await getMainViewUrl();
+// on Wayland the GTK/Electrobun window backend may not provide an
+// RGBA visual, resulting in an opaque black background even when
+// `transparent:true` is requested.  Force X11 compatibility via
+// GDK_BACKEND so that transparency works (runs under XWayland).  This is
+// the same behavior you get on Windows/macOS and satisfies the "works on
+// Wayland" requirement without needing core changes.
+if (process.env.XDG_SESSION_TYPE === 'wayland') {
+	console.warn('Wayland detected – forcing GDK_BACKEND=x11 for transparency support');
+	process.env.GDK_BACKEND = 'x11';
+}
+
 const display = Screen.getPrimaryDisplay();
 const displayBounds = display.bounds;
 

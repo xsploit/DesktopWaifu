@@ -112,6 +112,13 @@ That means desktop-specific behavior should be fixed here, not backported mental
 - Windows is the currently validated desktop target
 
 > **Linux users:** you must install the `libayatana-appindicator3` library (package names vary by distro, e.g. `libayatana-appindicator3` on Debian/Ubuntu) so the Electrobun native wrapper can load. Without it the desktop shell will crash with `libayatana-appindicator3.so.1: cannot open shared object file`.
+>
+> **Wayland:** GTK’s default Wayland backend doesn’t currently provide a
+> transparent RGBA visual, so window backgrounds render solid black. The
+> app will automatically fall back to X11 (run under XWayland) when a Wayland
+> session is detected, but you can also set `GDK_BACKEND=x11` yourself if
+> you prefer.  This workaround gives you the same transparent desktop
+> shell effect you’d see on X11 or Windows/macOS.
 
 ### Dev run
 
