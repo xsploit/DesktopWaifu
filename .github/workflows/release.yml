@@ -53,16 +53,15 @@ jobs:
       - name: Build Electrobun app (stable)
         run: bunx electrobun build --env=stable
 
-      # On Linux, obtain a working AppImageTool binary (apt repo doesn't
-      # contain it). We download the official AppImage and make it executable.
+      # On Linux, download the AppImageTool binary into the workspace root.
       - name: Acquire AppImageTool
         if: matrix.platform == 'linux'
         run: |
           URL="https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage"
           curl -L -o appimagetool "${URL}"
           chmod +x appimagetool
-          sudo mv appimagetool /usr/local/bin/appimagetool
-          appimagetool --version || true
+          # we will invoke this binary directly later; no PATH changes required
+          ./appimagetool --version || true
 
       # Windows only: write manifests and run postPackage fix
       - name: Write Windows manifests
@@ -85,12 +84,33 @@ jobs:
         if: matrix.platform == 'linux'
         shell: bash
         run: |
+          set -eux
+          # expect the binary in workspace root (downloaded earlier)
+          if [ ! -x ./appimagetool ]; then
+            echo "appimagetool binary missing; run Acquire step or store locally"
+            exit 1
+          fi
+          TOOL="./appimagetool"
           APP="webwaifu3-electrobun"
           BUILD_DIR="build/stable-linux-x64/$APP"
           mkdir -p dist-release
+          echo "Listing contents of $BUILD_DIR for inspection:"
+          ls -R "$BUILD_DIR" | head -n 20 || true
           if [ -d "$BUILD_DIR" ]; then
+            # the .desktop file produced by electrobun sets Icon=appIcon.png
+            # AppImageTool expects the icon name to be extensionless, so rewrite it.
+            if [ -f "$BUILD_DIR/webwaifu3-electrobun.desktop" ]; then
+              sed -i 's/^Icon=\(.*\)\.png$/Icon=\1/' "$BUILD_DIR/webwaifu3-electrobun.desktop"
+            fi
+            # also ensure there is a matching icon file at the root of the AppDir
+            if [ -f "$BUILD_DIR/Resources/appIcon.png" ]; then
+              cp "$BUILD_DIR/Resources/appIcon.png" "$BUILD_DIR/appIcon.png"
+            fi
+
             echo "Generating AppImage from $BUILD_DIR"
-            appimagetool "$BUILD_DIR" "dist-release/DesktopWaifu-Linux-x64.AppImage" || true
+            $TOOL "$BUILD_DIR" "dist-release/DesktopWaifu-Linux-x64.AppImage"
+            echo "AppImage creation exit code: $?"
+            ls -lh dist-release || true
           else
             echo "Warning: build directory $BUILD_DIR not found, skipping AppImage generation"
           fi
