@@ -53,6 +53,13 @@ jobs:
       - name: Build Electrobun app (stable)
         run: bunx electrobun build --env=stable
 
+      # On Linux, ensure appimagetool is available so we can produce an AppImage
+      - name: Install AppImageTool
+        if: matrix.platform == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y appimagetool
+
       # Windows only: write manifests and run postPackage fix
       - name: Write Windows manifests
         if: matrix.platform == 'win'
@@ -68,6 +75,22 @@ jobs:
           ELECTROBUN_EXTRACTOR_PATH: ${{ github.workspace }}/node_modules/electrobun/bin/extractor.exe
 
       # ── Collect Linux artifacts ──────────────────────────────────────────
+      # After the Electrobun build we can try to produce an AppImage.  
+      # appimagetool is installed earlier on linux runners.
+      - name: Create AppImage
+        if: matrix.platform == 'linux'
+        shell: bash
+        run: |
+          APP="webwaifu3-electrobun"
+          BUILD_DIR="build/stable-linux-x64/$APP"
+          mkdir -p dist-release
+          if [ -d "$BUILD_DIR" ]; then
+            echo "Generating AppImage from $BUILD_DIR"
+            appimagetool "$BUILD_DIR" "dist-release/DesktopWaifu-Linux-x64.AppImage" || true
+          else
+            echo "Warning: build directory $BUILD_DIR not found, skipping AppImage generation"
+          fi
+
       - name: Collect Linux artifacts
         if: matrix.platform == 'linux'
         shell: bash
