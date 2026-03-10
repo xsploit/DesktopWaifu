@@ -12,6 +12,7 @@
 		"build:stable": "vite build && bun ../../QWENSTUDIO/electrobun/package/src/cli/index.ts build --env=stable && bun run scripts/write-windows-manifests.mjs",
 		"build:canary": "vite build && bun ../../QWENSTUDIO/electrobun/package/src/cli/index.ts build --env=canary && bun run scripts/write-windows-manifests.mjs",
 		"build:release": "bun run build:stable",
+		"build:ci": "vite build && bunx electrobun build --env=stable",
 		"preview": "vite preview",
 		"prepare": "svelte-kit sync || echo ''",
 		"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",

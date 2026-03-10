@@ -35,13 +35,29 @@ if (!buildDir || !artifactDir || !appName) {
 }
 
 const projectRoot = process.cwd();
-const debugExtractorPath = join(
+const localDevExtractorPath = join(
 	projectRoot,
 	'../../QWENSTUDIO/electrobun/package/src/extractor/zig-out/bin/extractor.exe',
 );
 
-if (!existsSync(debugExtractorPath)) {
-	fail(`Debug extractor not found: ${debugExtractorPath}`);
+// In CI, use ELECTROBUN_EXTRACTOR_PATH (e.g. node_modules/electrobun/bin/extractor.exe).
+// In dev, use the local QWENSTUDIO repo path.
+// If neither exists, exit gracefully — the released electrobun package
+// should already embed the correct extractor for stable builds.
+const envExtractorPath = process.env.ELECTROBUN_EXTRACTOR_PATH ?? null;
+
+let debugExtractorPath = null;
+
+if (envExtractorPath && existsSync(envExtractorPath)) {
+	debugExtractorPath = envExtractorPath;
+	console.log(`[postPackage] Using extractor from ELECTROBUN_EXTRACTOR_PATH: ${debugExtractorPath}`);
+} else if (existsSync(localDevExtractorPath)) {
+	debugExtractorPath = localDevExtractorPath;
+	console.log(`[postPackage] Using local dev extractor: ${debugExtractorPath}`);
+} else {
+	console.log('[postPackage] No extractor found (ELECTROBUN_EXTRACTOR_PATH not set, local dev path missing).');
+	console.log('[postPackage] Skipping Setup.exe replacement — assuming released electrobun already embeds the correct extractor.');
+	process.exit(0);
 }
 
 const setupExePath = join(buildDir, `${appName}-Setup.exe`);

@@ -1,0 +1,195 @@
+name: Build & Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: write
+
+jobs:
+  # ─────────────────────────────────────────────
+  # Build per platform
+  # ─────────────────────────────────────────────
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            platform: linux
+            arch: x64
+            artifact_label: Linux-x64
+          - os: windows-latest
+            platform: win
+            arch: x64
+            artifact_label: Windows-x64
+          - os: macos-latest
+            platform: mac
+            arch: arm64
+            artifact_label: macOS-arm64
+
+    name: Build (${{ matrix.platform }}-${{ matrix.arch }})
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Build web assets
+        run: bun run build:web
+
+      # Use the electrobun CLI installed from npm (not the local dev path)
+      - name: Build Electrobun app (stable)
+        run: bunx electrobun build --env=stable
+
+      # Windows only: write manifests and run postPackage fix
+      - name: Write Windows manifests
+        if: matrix.platform == 'win'
+        run: bun run scripts/write-windows-manifests.mjs
+
+      - name: Run postPackage fix (Windows)
+        if: matrix.platform == 'win'
+        run: bun run scripts/fix-windows-setup-extractor.mjs
+        env:
+          # Points to the extractor bundled with the installed electrobun npm package.
+          # The script falls back to this when the local dev path is unavailable.
+          # Update this path if the electrobun package structure changes.
+          ELECTROBUN_EXTRACTOR_PATH: ${{ github.workspace }}/node_modules/electrobun/bin/extractor.exe
+
+      # ── Collect Linux artifacts ──────────────────────────────────────────
+      - name: Collect Linux artifacts
+        if: matrix.platform == 'linux'
+        shell: bash
+        run: |
+          mkdir -p dist-release
+          APP="webwaifu3-electrobun"
+          BUILD_DIR="build/stable-linux-x64"
+
+          # Compressed tar.gz of the entire app directory
+          if [ -d "$BUILD_DIR/$APP" ]; then
+            tar -czf "dist-release/DesktopWaifu-Linux-x64.tar.gz" \
+              -C "$BUILD_DIR" "$APP"
+            echo "Created DesktopWaifu-Linux-x64.tar.gz"
+          else
+            echo "WARNING: $BUILD_DIR/$APP not found, searching..."
+            find build/stable-linux-* -maxdepth 1 -type d | head -5
+          fi
+
+          # AppImage if generated
+          find . -name "*.AppImage" -not -path "*/node_modules/*" \
+            -exec cp {} dist-release/DesktopWaifu-Linux-x64.AppImage \; 2>/dev/null || true
+
+      # ── Collect Windows artifacts ────────────────────────────────────────
+      - name: Collect Windows artifacts
+        if: matrix.platform == 'win'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path dist-release | Out-Null
+          $APP = "webwaifu3-electrobun"
+          $patterns = @(
+            "build\stable-win-x64\*-Setup.exe",
+            "build\stable-win-x64\*-Setup.zip",
+            "artifacts\*-Setup.exe",
+            "artifacts\*-Setup.zip",
+            "build\**\*-Setup.exe",
+            "build\**\*-Setup.zip"
+          )
+          foreach ($pattern in $patterns) {
+            $files = Get-ChildItem -Path $pattern -ErrorAction SilentlyContinue
+            foreach ($file in $files) {
+              if ($file.Extension -eq ".exe") {
+                Copy-Item $file.FullName "dist-release\DesktopWaifu-Setup.exe" -Force
+                Write-Host "Copied $($file.Name) -> DesktopWaifu-Setup.exe"
+              } elseif ($file.Extension -eq ".zip") {
+                Copy-Item $file.FullName "dist-release\DesktopWaifu-Setup.zip" -Force
+                Write-Host "Copied $($file.Name) -> DesktopWaifu-Setup.zip"
+              }
+            }
+          }
+          Get-ChildItem dist-release
+
+      # ── Collect macOS artifacts ──────────────────────────────────────────
+      - name: Collect macOS artifacts
+        if: matrix.platform == 'mac'
+        shell: bash
+        run: |
+          mkdir -p dist-release
+          APP="webwaifu3-electrobun"
+          BUILD_DIR="build/stable-mac-arm64"
+
+          # DMG if generated
+          find . -name "*.dmg" -not -path "*/node_modules/*" \
+            -exec cp {} dist-release/DesktopWaifu-macOS-arm64.dmg \; 2>/dev/null || true
+
+          # ZIP the app bundle if no DMG was generated
+          if [ ! -f dist-release/DesktopWaifu-macOS-arm64.dmg ]; then
+            if [ -d "$BUILD_DIR/$APP" ]; then
+              zip -r "dist-release/DesktopWaifu-macOS-arm64.zip" \
+                "$BUILD_DIR/$APP"
+              echo "Created DesktopWaifu-macOS-arm64.zip"
+            else
+              echo "WARNING: $BUILD_DIR/$APP not found, searching..."
+              find build/stable-mac-* -maxdepth 1 -type d | head -5
+            fi
+          fi
+
+      - name: List artifacts
+        shell: bash
+        run: ls -lh dist-release/ || echo "dist-release is empty or missing"
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: artifacts-${{ matrix.platform }}-${{ matrix.arch }}
+          path: dist-release/
+          if-no-files-found: warn
+
+  # ─────────────────────────────────────────────
+  # Create the GitHub Release
+  # ─────────────────────────────────────────────
+  release:
+    name: GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-artifacts
+          merge-multiple: true
+
+      - name: List release artifacts
+        run: ls -lh release-artifacts/
+
+      - name: Generate SHA256 checksums
+        working-directory: release-artifacts
+        run: |
+          sha256sum * > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
+      - name: Extract version
+        id: version
+        run: echo "tag=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "DesktopWaifu ${{ steps.version.outputs.tag }}"
+          tag_name: ${{ steps.version.outputs.tag }}
+          draft: false
+          prerelease: false
+          body: |
+            Release ${{ steps.version.outputs.tag }} of DesktopWaifu, built with Electrobun.
+          files: |
+            release-artifacts/*
