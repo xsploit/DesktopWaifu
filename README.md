@@ -119,6 +119,15 @@ That means desktop-specific behavior should be fixed here, not backported mental
 > session is detected, but you can also set `GDK_BACKEND=x11` yourself if
 > you prefer.  This workaround gives you the same transparent desktop
 > shell effect you’d see on X11 or Windows/macOS.
+>
+> **AppImage users:** the AppImage runtime itself is Qt‑based and will
+> complain about missing platform plugins on systems without a complete Qt
+> installation (see `qt.qpa.plugin` errors when launching).  The release
+> workflow now ships a tiny wrapper as `AppRun` so the bundled launcher is
+> invoked directly, but if you build manually you should still run under
+> X11 (`GDK_BACKEND=x11 QT_QPA_PLATFORM=xcb`) or install the `qt5-wayland`
+> package.  Running under pure Wayland without the Qt Wayland plugin will
+> otherwise produce harmless warnings and a failure to start.
 
 ### Dev run
 
@@ -128,6 +137,15 @@ bun run dev
 ```
 
 > *The frontend server is started on `https://localhost:5173` when run
+
+> **Running a raw Linux bundle:** the build output under `build/stable-linux-x64/` 
+> is an [AppDir](https://docs.appimage.org/packaging-guide/directory-layout.html).
+> To start the application you must execute the provided `AppRun` wrapper (or
+> use the desktop file) – it will locate and launch `bin/launcher` correctly.
+> Invoking `bin/launcher` on its own prints the "Not a valid self-extracting
+> installer" error because the binary is intended to be executed from inside a
+> self‑extracting container, not directly.  This is the same reason the AppImage
+> wrapper is necessary above.
 > standalone, but HTTP is used when the desktop shell launches it (the
 > `ELECTROBUN_DEV` environment variable disables `basicSsl`).  It is
 > invoked with `--port 5173 --strictPort`.  If the port is already

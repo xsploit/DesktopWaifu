@@ -80,6 +80,34 @@ jobs:
       # ── Collect Linux artifacts ──────────────────────────────────────────
       # After the Electrobun build we can try to produce an AppImage.  
       # appimagetool is installed earlier on linux runners.
+
+      # Electrobun's build uses GNU tar by default, which emits @LongLink (type
+      # 'L') entries for paths longer than 100 chars.  Zig's tar extractor inside
+      # the self-extractor binary does not support GNU @LongLink, causing
+      # "TarUnsupportedFileType" at runtime.  Repack the archive in PAX format
+      # (which Zig *does* support) before embedding it in the launcher.
+      - name: Repack app archive as PAX tar
+        if: matrix.platform == 'linux'
+        shell: bash
+        run: |
+          set -eux
+          APP="webwaifu3-electrobun"
+          RESOURCES="build/stable-linux-x64/$APP/Resources"
+          ARCHIVE=$(find "$RESOURCES" -maxdepth 1 -name "*.tar.zst" | head -1)
+          if [ -z "$ARCHIVE" ]; then
+            echo "No *.tar.zst found – skipping repack"
+            exit 0
+          fi
+          echo "Repacking $ARCHIVE from GNU to PAX format..."
+          TMPDIR_REPACK=$(mktemp -d)
+          # extract
+          zstd -d -c "$ARCHIVE" | tar -x -C "$TMPDIR_REPACK"
+          # repack as PAX (POSIX.1-2001), compress with zstd
+          tar --format=pax -c -C "$TMPDIR_REPACK" . | zstd -T0 -19 -o "${ARCHIVE}.pax.zst"
+          mv "${ARCHIVE}.pax.zst" "$ARCHIVE"
+          rm -rf "$TMPDIR_REPACK"
+          echo "Repacked: $(stat -c%s "$ARCHIVE") bytes"
+
       - name: Create AppImage
         if: matrix.platform == 'linux'
         shell: bash
@@ -106,6 +134,57 @@ jobs:
             if [ -f "$BUILD_DIR/Resources/appIcon.png" ]; then
               cp "$BUILD_DIR/Resources/appIcon.png" "$BUILD_DIR/appIcon.png"
             fi
+
+            # Unpack the compressed application archive so the AppDir contains
+            # the actual binaries (bun, libs, etc).  The stable build keeps these
+            # files inside a tarball for the installer, but the portable AppImage
+            # needs them laid out flat.
+            ARCHIVE=$(find "$BUILD_DIR/Resources" -maxdepth 1 -name "*.tar.zst" | head -1)
+            if [ -n "$ARCHIVE" ]; then
+              echo "Extracting app archive into AppDir from $ARCHIVE"
+              tar --strip-components=1 -x -I zstd -f "$ARCHIVE" -C "$BUILD_DIR"
+            fi
+
+            # Override the default Qt‑based runtime by shipping a tiny
+            # shell wrapper as AppRun.  The stock runtime spawns Qt and
+            # prints the "Could not find the Qt platform plugin" message
+            # on Wayland, which confuses end users even though the
+            # bundled GTK launcher is perfectly functional.  Our script
+            # simply execs the Electrobun launcher directly and also
+            # forces the X11 backend when running under Wayland.
+            cat > "$BUILD_DIR/AppRun" <<'EOF'
+#!/bin/sh
+# simple entrypoint used by the AppImage
+# force X11 on Wayland so the GTK shell is transparent and Qt
+# (if it gets loaded) doesn't try to use a missing wayland plugin.
+if [ "$XDG_SESSION_TYPE" = "wayland" ]; then
+    export GDK_BACKEND=x11
+    export QT_QPA_PLATFORM=xcb
+fi
+
+# locate ourselves; AppImage sets APPDIR automatically when mounted
+if [ -z "$APPDIR" ]; then
+    # fallback for manual testing from build directory
+    APPDIR="$(dirname "$0")"
+fi
+exec "$APPDIR/bin/launcher" "$@"
+EOF
+            chmod +x "$BUILD_DIR/AppRun"
+
+            # ── Prepare portable runtime launcher ─────────────────────────
+            # Instead of shipping the self‑extractor installer we want a
+            # ready‑to‑run bundle.  Copy the normal Electrobun launcher from the
+            # installed npm package; it will start the Bun server from
+            # Resources/app without touching the user's home directory.
+            RUNTIME_LAUNCHER="node_modules/electrobun/dist-linux-x64/launcher"
+            if [ ! -f "$RUNTIME_LAUNCHER" ]; then
+              echo "ERROR: runtime launcher missing: $RUNTIME_LAUNCHER"
+              exit 1
+            fi
+            cp "$RUNTIME_LAUNCHER" "$BUILD_DIR/bin/launcher"
+            chmod +x "$BUILD_DIR/bin/launcher"
+            echo "Using portable launcher $(stat -c%s "$BUILD_DIR/bin/launcher") bytes"
+            # ── end payload embedding ────────────────────────────────────────
 
             echo "Generating AppImage from $BUILD_DIR"
             APPIMAGE_EXTRACT_AND_RUN=1 $TOOL "$BUILD_DIR" "dist-release/DesktopWaifu-Linux-x64.AppImage"

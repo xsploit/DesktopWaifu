@@ -10,6 +10,8 @@ node_modules
 dist
 artifacts
 appimagetool
+dist-release
+squashfs-root
 
 # OS
 .DS_Store
