@@ -7,6 +7,13 @@ node_modules
 .wrangler
 /.svelte-kit
 /build
+/dist
+/artifacts
+/.tmp-*
+stdout.txt
+stderr.txt
+tmp-electrobun-relative*
+tmp-electrobun-relative-out/
 
 # OS
 .DS_Store

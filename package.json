@@ -11,6 +11,7 @@
 		"build": "vite build && electrobun build && bun run scripts/write-windows-manifests.mjs",
 		"build:stable": "vite build && electrobun build --env=stable && bun run scripts/write-windows-manifests.mjs",
 		"build:canary": "vite build && electrobun build --env=canary && bun run scripts/write-windows-manifests.mjs",
+		"build:windows-installer": "bun run build:stable && bun run scripts/build-windows-installer.mjs",
 		"build:release": "bun run build:stable",
 		"preview": "vite preview",
 		"postinstall": "bun run scripts/apply-electrobun-patches.mjs",
