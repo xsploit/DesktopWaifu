@@ -3,6 +3,7 @@ import { join } from 'path';
 import { BrowserView, BrowserWindow, GlobalShortcut, Screen, Tray, Updater, ffi } from './electrobun-runtime';
 import { createFishRpcHandlers } from './fish.js';
 import type {
+	ElectrobunShellHotkeys,
 	ElectrobunWindowInteractionState,
 	ShellControlActionPayload,
 	WebWaifuElectrobunRPC
@@ -13,6 +14,11 @@ const DEV_SERVER_PORT = 5173;
 const DEV_SERVER_URL = `http://localhost:${DEV_SERVER_PORT}`;
 const MIN_WINDOW_WIDTH = 1280;
 const MIN_WINDOW_HEIGHT = 720;
+const DEFAULT_SHELL_HOTKEYS: ElectrobunShellHotkeys = {
+	sttToggle: 'CommandOrControl+Alt+Space',
+	chatToggle: 'F6',
+	recoverControls: 'CommandOrControl+Alt+M'
+};
 
 async function getMainViewUrl(): Promise<string> {
 	const channel = await Updater.localInfo.channel();
@@ -32,7 +38,9 @@ async function getMainViewUrl(): Promise<string> {
 const url = await getMainViewUrl();
 const display = Screen.getPrimaryDisplay();
 const displayBounds = display.bounds;
-const windowStatePath = resolveWindowStatePath();
+const appStateDir = resolveAppStateDir();
+const windowStatePath = join(appStateDir, 'window-state.json');
+const shellHotkeysPath = join(appStateDir, 'shell-hotkeys.json');
 let persistWindowStateTimer: ReturnType<typeof setTimeout> | null = null;
 
 type PersistedWindowState = {
@@ -42,7 +50,7 @@ type PersistedWindowState = {
 	height: number;
 };
 
-function resolveWindowStatePath() {
+function resolveAppStateDir() {
 	const appDataRoot =
 		Bun.env.APPDATA ||
 		Bun.env.LOCALAPPDATA ||
@@ -51,7 +59,7 @@ function resolveWindowStatePath() {
 
 	const dir = join(appDataRoot, 'DesktopWaifu');
 	mkdirSync(dir, { recursive: true });
-	return join(dir, 'window-state.json');
+	return dir;
 }
 
 function isValidPersistedWindowState(value: unknown): value is PersistedWindowState {
@@ -108,9 +116,63 @@ function schedulePersistWindowState(frame: PersistedWindowState) {
 }
 
 const initialFrame = getInitialFrame();
-const STT_TOGGLE_ACCELERATOR = 'CommandOrControl+Alt+Space';
-const RECOVER_CONTROLS_ACCELERATOR = 'CommandOrControl+Alt+M';
-const CHAT_TOGGLE_ACCELERATOR = 'F6';
+
+function isValidShellHotkeys(value: unknown): value is ElectrobunShellHotkeys {
+	if (!value || typeof value !== 'object') return false;
+	const hotkeys = value as Record<string, unknown>;
+	return (
+		typeof hotkeys.sttToggle === 'string' &&
+		typeof hotkeys.chatToggle === 'string' &&
+		typeof hotkeys.recoverControls === 'string'
+	);
+}
+
+function normalizeShellHotkeys(value: ElectrobunShellHotkeys): ElectrobunShellHotkeys {
+	return {
+		sttToggle: value.sttToggle.trim(),
+		chatToggle: value.chatToggle.trim(),
+		recoverControls: value.recoverControls.trim()
+	};
+}
+
+function validateShellHotkeys(value: ElectrobunShellHotkeys) {
+	const normalized = normalizeShellHotkeys(value);
+	const entries = Object.entries(normalized);
+	for (const [key, accelerator] of entries) {
+		if (!accelerator) {
+			throw new Error(`Shortcut "${key}" cannot be empty.`);
+		}
+	}
+	const unique = new Set(entries.map(([, accelerator]) => accelerator.toLowerCase()));
+	if (unique.size !== entries.length) {
+		throw new Error('Global shortcuts must be unique.');
+	}
+	return normalized;
+}
+
+function loadShellHotkeys(): ElectrobunShellHotkeys {
+	if (!existsSync(shellHotkeysPath)) {
+		return { ...DEFAULT_SHELL_HOTKEYS };
+	}
+
+	try {
+		const parsed = JSON.parse(readFileSync(shellHotkeysPath, 'utf8'));
+		if (!isValidShellHotkeys(parsed)) {
+			return { ...DEFAULT_SHELL_HOTKEYS };
+		}
+		return validateShellHotkeys(parsed);
+	} catch {
+		return { ...DEFAULT_SHELL_HOTKEYS };
+	}
+}
+
+function persistShellHotkeys(hotkeys: ElectrobunShellHotkeys) {
+	try {
+		writeFileSync(shellHotkeysPath, JSON.stringify(hotkeys, null, 2), 'utf8');
+	} catch (error) {
+		console.warn('[DesktopWaifu] Failed to persist shell hotkeys:', error);
+	}
+}
 
 type TrayClickEvent = {
 	data?: {
@@ -131,6 +193,8 @@ const fishRpcHandlers = createFishRpcHandlers({
 	}
 });
 
+let shellHotkeys = loadShellHotkeys();
+
 appRpc = BrowserView.defineRPC<WebWaifuElectrobunRPC>({
 	handlers: {
 		requests: {
@@ -150,6 +214,16 @@ appRpc = BrowserView.defineRPC<WebWaifuElectrobunRPC>({
 			},
 			windowGetInteractionState() {
 				return getWindowInteractionState();
+			},
+			shellGetHotkeys() {
+				return shellHotkeys;
+			},
+			shellSetHotkeys(nextHotkeys) {
+				shellHotkeys = validateShellHotkeys(nextHotkeys);
+				persistShellHotkeys(shellHotkeys);
+				registerConfiguredShortcuts();
+				appRpc.send.shellHotkeysChanged(shellHotkeys);
+				return { ok: true as const, hotkeys: shellHotkeys };
 			},
 			windowClose() {
 				mainWindow.close();
@@ -253,20 +327,41 @@ function recoverControls(source: 'hotkey' | 'tray' | 'shell' = 'shell') {
 	if (!wasClickThrough) {
 		sendShellControlAction({
 			action: 'reveal-controls',
-			accelerator: source === 'hotkey' ? RECOVER_CONTROLS_ACCELERATOR : undefined,
+			accelerator: source === 'hotkey' ? shellHotkeys.recoverControls : undefined,
 			source
 		});
 	}
 }
 
 function registerShortcut(accelerator: string, callback: () => void) {
-	if (GlobalShortcut.isRegistered(accelerator)) {
-		return;
-	}
 	const registered = GlobalShortcut.register(accelerator, callback);
 	if (!registered) {
 		console.warn(`[Electrobun] Failed to register global shortcut: ${accelerator}`);
 	}
+}
+
+function registerConfiguredShortcuts() {
+	GlobalShortcut.unregisterAll();
+
+	registerShortcut(shellHotkeys.sttToggle, () => {
+		sendShellControlAction({
+			action: 'toggle-stt',
+			accelerator: shellHotkeys.sttToggle,
+			source: 'hotkey'
+		});
+	});
+
+	registerShortcut(shellHotkeys.chatToggle, () => {
+		sendShellControlAction({
+			action: 'toggle-chat',
+			accelerator: shellHotkeys.chatToggle,
+			source: 'hotkey'
+		});
+	});
+
+	registerShortcut(shellHotkeys.recoverControls, () => {
+		recoverControls('hotkey');
+	});
 }
 
 function updateTrayMenu() {
@@ -344,26 +439,7 @@ mainWindow.on('close', () => {
 	tray.remove();
 });
 
-registerShortcut(STT_TOGGLE_ACCELERATOR, () => {
-	sendShellControlAction({
-		action: 'toggle-stt',
-		accelerator: STT_TOGGLE_ACCELERATOR,
-		source: 'hotkey'
-	});
-});
-
-registerShortcut(CHAT_TOGGLE_ACCELERATOR, () => {
-	sendShellControlAction({
-		action: 'toggle-chat',
-		accelerator: CHAT_TOGGLE_ACCELERATOR,
-		source: 'hotkey'
-	});
-});
-
-registerShortcut(RECOVER_CONTROLS_ACCELERATOR, () => {
-	recoverControls('hotkey');
-});
-
+registerConfiguredShortcuts();
 syncWindowMode();
 
 console.log('WEBWAIFU 3 Electrobun shell started');

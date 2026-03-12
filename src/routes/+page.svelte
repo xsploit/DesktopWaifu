@@ -10,6 +10,7 @@
 	import SplashModal from '$lib/components/SplashModal.svelte';
 	import { getElectrobunRpc } from '$lib/electrobun/bridge.js';
 	import type {
+		ElectrobunShellHotkeys,
 		ElectrobunWindowFrame,
 		ElectrobunWindowInteractionState,
 		ShellControlActionPayload
@@ -23,6 +24,7 @@
 		getCharacterState,
 		getSettingsPanel,
 		getSequencerState,
+		getShellHotkeys,
 		getSttState,
 		getModelList,
 		getMemoryState,
@@ -44,6 +46,7 @@
 	const chars = getCharacterState();
 	const panel = getSettingsPanel();
 	const seqState = getSequencerState();
+	const shellHotkeys = getShellHotkeys();
 	const sttState = getSttState();
 	const models = getModelList();
 	const visuals = getVrmVisuals();
@@ -489,16 +492,23 @@
 			const onShellControlAction = (payload: ShellControlActionPayload) => {
 				void handleShellControlAction(payload);
 			};
+			const onShellHotkeysChanged = (payload: ElectrobunShellHotkeys) => {
+				shellHotkeys.replace(payload);
+			};
 
 			rpc.addMessageListener('windowInteractionChanged', onWindowInteractionChanged);
 			rpc.addMessageListener('shellControlAction', onShellControlAction);
+			rpc.addMessageListener('shellHotkeysChanged', onShellHotkeysChanged);
 			rpcCleanup.push(() => {
 				rpc.removeMessageListener('windowInteractionChanged', onWindowInteractionChanged);
 				rpc.removeMessageListener('shellControlAction', onShellControlAction);
+				rpc.removeMessageListener('shellHotkeysChanged', onShellHotkeysChanged);
 			});
 
 			const initialInteraction = await rpc.request.windowGetInteractionState({});
 			applyWindowInteractionState(initialInteraction, { revealOnInteractive: false });
+			const initialHotkeys = await rpc.request.shellGetHotkeys({});
+			shellHotkeys.replace(initialHotkeys);
 		})();
 
 		updateUiScale();

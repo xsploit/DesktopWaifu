@@ -1,8 +1,11 @@
 <script lang="ts">
-	import { getSttState, addLog } from '../../stores/app.svelte.js';
+	import { getSttState, getShellHotkeys, addLog, toast } from '../../stores/app.svelte.js';
 	import { initializeSttModel } from '../../stt/controller.js';
+	import { getElectrobunRpc, isElectrobunRuntime } from '../../electrobun/bridge.js';
 
 	const stt = getSttState();
+	const shellHotkeys = getShellHotkeys();
+	let applyingHotkeys = $state(false);
 
 	async function preloadModel() {
 		if (stt.modelReady || stt.modelLoading) return;
@@ -14,6 +17,46 @@
 		} catch (e: any) {
 			console.error('[STT] Preload failed:', e);
 		}
+	}
+
+	async function applyHotkeys() {
+		if (!isElectrobunRuntime()) {
+			toast('Desktop hotkeys are only available in the Electrobun app.');
+			return;
+		}
+
+		applyingHotkeys = true;
+		try {
+			const rpc = await getElectrobunRpc();
+			if (!rpc) {
+				throw new Error('Electrobun RPC unavailable.');
+			}
+			const result = await rpc.request.shellSetHotkeys({
+				sttToggle: shellHotkeys.sttToggle,
+				chatToggle: shellHotkeys.chatToggle,
+				recoverControls: shellHotkeys.recoverControls
+			});
+			shellHotkeys.replace(result.hotkeys);
+			addLog('Desktop hotkeys updated', 'info');
+			toast('Desktop hotkeys updated');
+		} catch (e: any) {
+			console.error('[STT] Hotkey update failed:', e);
+			toast(`Failed to update hotkeys: ${e?.message ?? e}`);
+			try {
+				const rpc = await getElectrobunRpc();
+				const current = rpc ? await rpc.request.shellGetHotkeys({}) : null;
+				if (current) shellHotkeys.replace(current);
+			} catch {
+				// ignore refresh failure
+			}
+		} finally {
+			applyingHotkeys = false;
+		}
+	}
+
+	function resetHotkeys() {
+		shellHotkeys.reset();
+		void applyHotkeys();
 	}
 </script>
 
@@ -64,6 +107,39 @@
 	<p class="hint">Model downloads ~40MB on first use. Pre-loading avoids delay on first mic click.</p>
 </div>
 
+<div class="control-group">
+	<div class="control-label">Desktop Hotkeys</div>
+
+	<div class="hotkey-grid">
+		<label class="hotkey-field">
+			<span>STT Toggle</span>
+			<input type="text" bind:value={shellHotkeys.sttToggle} spellcheck="false" />
+		</label>
+		<label class="hotkey-field">
+			<span>Chat Toggle</span>
+			<input type="text" bind:value={shellHotkeys.chatToggle} spellcheck="false" />
+		</label>
+		<label class="hotkey-field">
+			<span>Recover Controls</span>
+			<input type="text" bind:value={shellHotkeys.recoverControls} spellcheck="false" />
+		</label>
+	</div>
+
+	<div class="hotkey-actions">
+		<button class="btn-tech" onclick={applyHotkeys} disabled={applyingHotkeys}>
+			{applyingHotkeys ? 'Applying...' : 'Apply Hotkeys'}
+		</button>
+		<button class="btn-tech ghost" onclick={resetHotkeys} disabled={applyingHotkeys}>
+			Reset Defaults
+		</button>
+	</div>
+
+	<p class="hint">
+		Examples: <code>CommandOrControl+Alt+Space</code>, <code>F6</code>,
+		<code>CommandOrControl+Alt+M</code>.
+	</p>
+</div>
+
 <style>
 	.control-group { display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; }
 	.control-label { font-size: 0.7rem; color: var(--c-text-accent); font-family: var(--font-tech); text-transform: uppercase; letter-spacing: 0.1em; opacity: 0.8; }
@@ -85,4 +161,37 @@
 	.status-dot.loading { background: var(--c-text-accent); animation: pulse 1.5s infinite; }
 	.status-text { font-size: 0.8rem; color: var(--text-muted); font-family: var(--font-tech); }
 	.hint { font-size: 0.7rem; color: var(--text-dim); margin: 4px 0 0; line-height: 1.4; }
+	.hotkey-grid { display: flex; flex-direction: column; gap: 10px; }
+	.hotkey-field { display: flex; flex-direction: column; gap: 4px; }
+	.hotkey-field span { font-size: 0.8rem; color: var(--text-muted); }
+	.hotkey-field input {
+		width: 100%;
+		padding: 10px 12px;
+		background: rgba(5, 10, 18, 0.78);
+		border: 1px solid var(--c-border);
+		color: var(--text-main);
+		font-family: var(--font-tech);
+		font-size: 0.78rem;
+	}
+	.hotkey-field input:focus {
+		outline: none;
+		border-color: var(--c-text-accent);
+		box-shadow: 0 0 0 1px color-mix(in oklab, var(--c-text-accent) 45%, transparent);
+	}
+	.hotkey-actions { display: flex; gap: 8px; }
+	.hotkey-actions .btn-tech { flex: 1; }
+	.btn-tech.ghost {
+		border-color: var(--c-border);
+		color: var(--text-muted);
+	}
+	.btn-tech.ghost:hover {
+		background: rgba(255, 255, 255, 0.06);
+		color: var(--text-main);
+		border-color: var(--text-main);
+	}
+	code {
+		font-family: var(--font-tech);
+		font-size: 0.72rem;
+		color: var(--text-main);
+	}
 </style>

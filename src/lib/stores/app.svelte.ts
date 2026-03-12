@@ -1,5 +1,6 @@
 import type { VRM } from '@pixiv/three-vrm';
 import type { LlmProvider } from '../llm/client.js';
+import type { ElectrobunShellHotkeys } from '../electrobun/rpc-schema.js';
 import * as THREE from 'three';
 
 // Toast state
@@ -32,6 +33,31 @@ export function getSettingsPanel() {
 		get activeTab() { return activeTab; },
 		set activeTab(v: string) { activeTab = v; },
 		toggle() { settingsPanelOpen = !settingsPanelOpen; }
+	};
+}
+
+export const DEFAULT_SHELL_HOTKEYS: ElectrobunShellHotkeys = {
+	sttToggle: 'CommandOrControl+Alt+Space',
+	chatToggle: 'F6',
+	recoverControls: 'CommandOrControl+Alt+M'
+};
+
+let shellHotkeys = $state<ElectrobunShellHotkeys>({ ...DEFAULT_SHELL_HOTKEYS });
+
+export function getShellHotkeys() {
+	return {
+		get sttToggle() { return shellHotkeys.sttToggle; },
+		set sttToggle(v: string) { shellHotkeys.sttToggle = v; },
+		get chatToggle() { return shellHotkeys.chatToggle; },
+		set chatToggle(v: string) { shellHotkeys.chatToggle = v; },
+		get recoverControls() { return shellHotkeys.recoverControls; },
+		set recoverControls(v: string) { shellHotkeys.recoverControls = v; },
+		replace(next: ElectrobunShellHotkeys) {
+			shellHotkeys = { ...next };
+		},
+		reset() {
+			shellHotkeys = { ...DEFAULT_SHELL_HOTKEYS };
+		}
 	};
 }
 

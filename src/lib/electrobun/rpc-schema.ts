@@ -99,6 +99,12 @@ export interface ElectrobunWindowInteractionState {
 	alwaysOnTop: boolean;
 }
 
+export interface ElectrobunShellHotkeys {
+	sttToggle: string;
+	chatToggle: string;
+	recoverControls: string;
+}
+
 export interface ShellControlActionPayload {
 	action: 'toggle-stt' | 'toggle-chat' | 'reveal-controls';
 	accelerator?: string;
@@ -156,6 +162,14 @@ export interface WebWaifuElectrobunRPC {
 				params: {};
 				response: ElectrobunWindowInteractionState;
 			};
+			shellGetHotkeys: {
+				params: {};
+				response: ElectrobunShellHotkeys;
+			};
+			shellSetHotkeys: {
+				params: ElectrobunShellHotkeys;
+				response: { ok: true; hotkeys: ElectrobunShellHotkeys };
+			};
 			windowClose: {
 				params: {};
 				response: { ok: true };
@@ -172,6 +186,7 @@ export interface WebWaifuElectrobunRPC {
 			fishStreamComplete: FishStreamCompletePayload;
 			fishStreamError: FishStreamErrorPayload;
 			windowInteractionChanged: ElectrobunWindowInteractionState;
+			shellHotkeysChanged: ElectrobunShellHotkeys;
 			shellControlAction: ShellControlActionPayload;
 		};
 	};
