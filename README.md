@@ -9,6 +9,7 @@
 <p>
   <a href="#what-it-is">What It Is</a> |
   <a href="#feature-surface">Features</a> |
+  <a href="#controls">Controls</a> |
   <a href="#desktopwaifu-vs-webwaifu3">DesktopWaifu vs WebWaifu3</a> |
   <a href="#quick-start">Quick Start</a> |
   <a href="#provider-setup">Provider Setup</a> |
@@ -91,6 +92,32 @@ The goal is simple: keep the WebWaifu UI and VRM workflow, but ship it as a real
 - VRM loading, animation sequencing, post-processing, lighting controls
 - desktop overlay UX instead of browser-tab UX
 - shell-level fixes for scaling, drag, and resize behavior
+
+<h2 align="center" id="controls">Controls</h2>
+
+### Keyboard
+
+- `Esc`
+  - Open the in-game settings/menu
+  - Close the menu and return to the normal canvas
+- `F6`
+  - Toggle the chat bar
+- `Ctrl+Alt+Space`
+  - Toggle desktop speech-to-text recording
+- `Ctrl+Alt+M`
+  - Recover controls if click-through is on
+  - Disables click-through, restores focus, and reveals the chrome
+
+### Mouse / window interactions
+
+- `Mouse wheel`
+  - Scale the active VRM model
+- `Background drag`
+  - Drag the desktop window when click-through is off
+- `Window edges`
+  - Resize the window from the outer edges
+- `Tray`
+  - Recover the window, toggle click-through, and quit the app
 
 <h2 align="center" id="source-of-truth">Source of Truth</h2>
 
