@@ -3,7 +3,7 @@
 
 	const panel = getSettingsPanel();
 
-	type TabId = 'vrm' | 'anim' | 'character' | 'ai' | 'tts' | 'stt' | 'logs';
+	type TabId = 'vrm' | 'anim' | 'character' | 'ai' | 'tts' | 'stt' | 'controls' | 'logs';
 	type TabModule = { default: any };
 
 	const tabs: { id: TabId; label: string }[] = [
@@ -13,6 +13,7 @@
 		{ id: 'ai', label: 'AI' },
 		{ id: 'tts', label: 'TTS' },
 		{ id: 'stt', label: 'STT' },
+		{ id: 'controls', label: 'Ctrl' },
 		{ id: 'logs', label: 'Logs' }
 	];
 
@@ -23,6 +24,7 @@
 		ai: () => import('./tabs/AiTab.svelte'),
 		tts: () => import('./tabs/TtsTab.svelte'),
 		stt: () => import('./tabs/SttTab.svelte'),
+		controls: () => import('./tabs/ControlsTab.svelte'),
 		logs: () => import('./tabs/LogsTab.svelte')
 	};
 	const tabCache = new Map<TabId, Promise<TabModule>>();
@@ -72,7 +74,6 @@
 			{/each}
 		</div>
 		<div class="header-right">
-			<a href="/manager" class="manager-link" title="Waifu Manager">MGR</a>
 			<button class="close-btn" title="Close (Esc)" onclick={() => panel.open = false}>
 				<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
 					<line x1="18" y1="6" x2="6" y2="18"></line>
@@ -119,9 +120,10 @@
 	}
 
 	.panel-header {
-		display: flex;
-		justify-content: space-between;
-		align-items: center;
+		display: grid;
+		grid-template-columns: minmax(0, 1fr) auto;
+		align-items: start;
+		gap: 12px;
 		padding: 16px 24px;
 		border-bottom: 1px solid var(--c-border);
 		flex-shrink: 0;
@@ -133,13 +135,12 @@
 	}
 
 	.tabs-header {
-		display: flex;
-		gap: 2px;
-		align-items: center;
-		overflow-x: auto;
-		scrollbar-width: none;
+		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(72px, 1fr));
+		gap: 6px;
+		align-items: stretch;
+		min-width: 0;
 	}
-	.tabs-header::-webkit-scrollbar { display: none; }
 
 	.header-right {
 		display: flex;
@@ -147,19 +148,6 @@
 		gap: 12px;
 		flex-shrink: 0;
 	}
-
-	.manager-link {
-		font-family: var(--font-tech);
-		font-size: 0.65rem;
-		color: var(--text-muted);
-		text-decoration: none;
-		text-transform: uppercase;
-		letter-spacing: 0.05em;
-		padding: 6px 10px;
-		border: 1px solid var(--c-border);
-		transition: all 0.2s;
-	}
-	.manager-link:hover { color: var(--c-text-accent); border-color: var(--c-text-accent); }
 
 	.close-btn {
 		width: 36px;
@@ -181,28 +169,41 @@
 
 	.tab-btn {
 		background: transparent;
-		border: none;
+		border: 1px solid color-mix(in oklab, var(--c-border) 85%, transparent);
+		background: rgba(255, 255, 255, 0.02);
 		color: var(--text-muted);
-		padding: 8px 14px;
-		font-size: 0.8rem;
+		padding: 8px 10px;
+		font-size: 0.74rem;
 		font-family: var(--font-tech);
 		text-transform: uppercase;
 		letter-spacing: 0.05em;
 		cursor: pointer;
-		transition: color 0.2s;
+		transition: color 0.2s, border-color 0.2s, background 0.2s;
 		position: relative;
+		min-height: 38px;
+		text-align: center;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
 	}
-	.tab-btn:hover { color: var(--c-text-accent); }
-	.tab-btn.active { color: var(--c-text-accent); font-weight: 600; }
+	.tab-btn:hover {
+		color: var(--c-text-accent);
+		border-color: color-mix(in oklab, var(--c-text-accent) 52%, transparent);
+	}
+	.tab-btn.active {
+		color: var(--c-text-accent);
+		font-weight: 600;
+		border-color: color-mix(in oklab, var(--c-text-accent) 78%, transparent);
+		background: color-mix(in oklab, var(--c-text-accent) 14%, transparent);
+	}
 	.tab-btn.active::after {
 		content: '';
 		position: absolute;
-		bottom: -16px;
-		left: 0;
-		width: 100%;
-		height: 2px;
+		inset-inline: 10px;
+		bottom: 4px;
+		height: 1px;
 		background: var(--c-text-accent);
-		box-shadow: 0 0 8px var(--c-text-accent);
+		box-shadow: 0 0 6px color-mix(in oklab, var(--c-text-accent) 72%, transparent);
 	}
 
 	.panel-scroll {
@@ -246,7 +247,8 @@
 	@media (max-width: 600px) {
 		.panel-header { padding: 12px 16px; }
 		.panel-scroll { padding: 16px; }
-		.tab-btn { padding: 8px 10px; font-size: 0.72rem; min-height: 44px; }
+		.tabs-header { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+		.tab-btn { padding: 8px 8px; font-size: 0.7rem; min-height: 38px; }
 		.panel-header,
 		.panel-scroll {
 			width: 100%;

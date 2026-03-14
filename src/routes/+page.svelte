@@ -1129,7 +1129,7 @@
 	<MenuFab visible={interactiveChromeVisible} />
 	<div class="ui-viewport">
 		<div class="ui-stage">
-			<div class="top-controls" class:visible={interactiveChromeVisible}>
+			<div class="top-controls" class:visible={interactiveChromeVisible && !panel.open}>
 				<a href="/manager" class="mgr-btn" title="Waifu Manager">MGR</a>
 			</div>
 			<ChatLog visible={interactiveChromeVisible} />

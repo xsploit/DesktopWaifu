@@ -15,6 +15,21 @@ const memoryManager = getMemoryManager();
 let onSendHandler: ((message: string) => void) | null = null;
 let recorderCallbacksBound = false;
 let toggleInFlight: Promise<void> | null = null;
+let pendingStartAfterModelLoad = false;
+
+async function startRecordingNow() {
+	recorder.silenceDetection = stt.autoSend;
+	if (memState.enabled && memoryManager.modelReady) {
+		void memoryManager.preloadEmbeddings().catch(() => {});
+	}
+
+	await recorder.startRecording();
+	stt.recording = recorder.isRecording();
+	if (stt.recording) {
+		addLog('STT recording started', 'info');
+		toast('STT recording started');
+	}
+}
 
 function bindRecorderCallbacks() {
 	if (recorderCallbacksBound) return;
@@ -24,6 +39,15 @@ function bindRecorderCallbacks() {
 		stt.modelReady = true;
 		toast('Whisper model ready');
 		addLog('Whisper model loaded', 'info');
+		if (pendingStartAfterModelLoad && stt.enabled && !stt.recording && !stt.transcribing) {
+			pendingStartAfterModelLoad = false;
+			void startRecordingNow().catch((err: unknown) => {
+				const message = err instanceof Error ? err.message : String(err);
+				stt.recording = false;
+				toast('Failed to start STT: ' + message);
+				addLog('STT auto-start failed: ' + message, 'err');
+			});
+		}
 	};
 
 	recorder.onModelError = (err) => {
@@ -35,6 +59,7 @@ function bindRecorderCallbacks() {
 	recorder.onError = (err) => {
 		stt.recording = false;
 		stt.transcribing = false;
+		pendingStartAfterModelLoad = false;
 		toast('STT error: ' + err);
 	};
 
@@ -97,23 +122,22 @@ async function startRecordingFlow() {
 	}
 
 	const readyState = await ensureModelReady();
+	if (readyState === 'loading') {
+		pendingStartAfterModelLoad = true;
+		toast('Loading Whisper model... Recording will start when ready.');
+		addLog('STT requested while model loads; will auto-start when ready', 'info');
+		return;
+	}
 	if (readyState !== 'ready') {
-		if (readyState === 'loading' && !stt.modelLoading) {
-			toast('Whisper model still loading...');
-		}
 		return;
 	}
 
-	recorder.silenceDetection = stt.autoSend;
-	if (memState.enabled && memoryManager.modelReady) {
-		void memoryManager.preloadEmbeddings().catch(() => {});
-	}
-
-	await recorder.startRecording();
-	stt.recording = recorder.isRecording();
+	pendingStartAfterModelLoad = false;
+	await startRecordingNow();
 }
 
 async function stopRecordingFlow() {
+	pendingStartAfterModelLoad = false;
 	stt.recording = false;
 	stt.transcribing = true;
 
