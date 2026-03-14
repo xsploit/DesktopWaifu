@@ -2,15 +2,32 @@ from __future__ import annotations
 
 import argparse
 import ctypes
+import hashlib
+import json
 import os
 import site
 import sys
+import tempfile
+import urllib.request
+import zipfile
 from pathlib import Path
 from typing import Any, Sequence
 
 import uvicorn
 
-from genie_compat_api import register_compat_api
+ROOT = Path(__file__).resolve().parent
+DEFAULT_MODEL_MANIFEST_PATH = ROOT / "default-model.json"
+DEFAULT_MODEL_REQUIRED_FILES = (
+    "prompt_encoder_fp32.onnx",
+    "prompt_encoder_fp16.bin",
+    "t2s_encoder_fp32.bin",
+    "t2s_encoder_fp32.onnx",
+    "t2s_first_stage_decoder_fp32.onnx",
+    "t2s_shared_fp16.bin",
+    "t2s_stage_decoder_fp32.onnx",
+    "vits_fp16.bin",
+    "vits_fp32.onnx",
+)
 
 
 def configure_console() -> None:
@@ -41,6 +58,168 @@ def ensure_genie_data(genie_data_dir: Path) -> None:
         local_dir_use_symlinks=False,
     )
     print("GenieData download complete.")
+
+
+def load_default_model_manifest(manifest_path: Path = DEFAULT_MODEL_MANIFEST_PATH) -> dict[str, Any] | None:
+    if not manifest_path.exists():
+        return None
+    return json.loads(manifest_path.read_text("utf-8"))
+
+
+def default_model_target_dir(manifest: dict[str, Any]) -> Path:
+    target_dir = str(manifest.get("target_dir") or "").strip()
+    if not target_dir:
+        raise SystemExit("default-model.json is missing target_dir.")
+    return (ROOT / target_dir).resolve()
+
+
+def is_complete_default_model_dir(target_dir: Path) -> bool:
+    return all((target_dir / file_name).exists() for file_name in DEFAULT_MODEL_REQUIRED_FILES)
+
+
+def verify_sha256(file_path: Path, expected_hash: str | None) -> bool:
+    normalized_expected = str(expected_hash or "").strip().lower()
+    if not normalized_expected:
+        return True
+
+    digest = hashlib.sha256()
+    with file_path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest().lower() == normalized_expected
+
+
+def validate_zip_members(archive: zipfile.ZipFile) -> None:
+    for member in archive.namelist():
+        member_path = Path(member)
+        if member_path.is_absolute() or ".." in member_path.parts:
+            raise SystemExit(f"Unsafe path found in default model archive: {member}")
+
+
+def download_default_model_archive(manifest: dict[str, Any]) -> Path:
+    asset_url = str(manifest.get("url") or "").strip()
+    if not asset_url:
+        raise SystemExit("default-model.json is missing url.")
+
+    asset_name = str(manifest.get("asset_name") or "").strip() or Path(asset_url).name or "DesktopWaifu-Genie-Default.zip"
+    downloads_dir = ROOT / ".cache" / "downloads"
+    downloads_dir.mkdir(parents=True, exist_ok=True)
+    archive_path = downloads_dir / asset_name
+    expected_hash = str(manifest.get("sha256") or "").strip()
+
+    if archive_path.exists() and verify_sha256(archive_path, expected_hash):
+        return archive_path
+
+    if archive_path.exists():
+        archive_path.unlink()
+
+    print(f"Downloading DesktopWaifu default Genie model from: {asset_url}")
+    request = urllib.request.Request(
+        asset_url,
+        headers={
+            "User-Agent": "DesktopWaifu-GenieTTS/1.0",
+            "Accept": "application/octet-stream",
+        },
+    )
+
+    with urllib.request.urlopen(request) as response, tempfile.NamedTemporaryFile(
+        dir=downloads_dir,
+        delete=False,
+        suffix=".tmp",
+    ) as temp_file:
+        while True:
+            chunk = response.read(1024 * 1024)
+            if not chunk:
+                break
+            temp_file.write(chunk)
+        temp_path = Path(temp_file.name)
+
+    if not verify_sha256(temp_path, expected_hash):
+        temp_path.unlink(missing_ok=True)
+        raise SystemExit("Downloaded default model archive failed SHA256 verification.")
+
+    temp_path.replace(archive_path)
+    print(f"Saved default model archive to: {archive_path}")
+    return archive_path
+
+
+def extract_default_model_archive(archive_path: Path, target_dir: Path) -> None:
+    cache_root = ROOT / ".cache"
+    cache_root.mkdir(parents=True, exist_ok=True)
+    temp_extract_dir = Path(tempfile.mkdtemp(prefix="genie-default-model-", dir=cache_root))
+    try:
+        with zipfile.ZipFile(archive_path, "r") as archive:
+            validate_zip_members(archive)
+            archive.extractall(temp_extract_dir)
+
+        candidate_dir = temp_extract_dir / target_dir.name
+        if not is_complete_default_model_dir(candidate_dir):
+            direct_children = [child for child in temp_extract_dir.iterdir()]
+            if is_complete_default_model_dir(temp_extract_dir):
+                candidate_dir = temp_extract_dir
+            elif len(direct_children) == 1 and direct_children[0].is_dir() and is_complete_default_model_dir(direct_children[0]):
+                candidate_dir = direct_children[0]
+            else:
+                raise SystemExit(
+                    f"Extracted default model archive is missing required files for {target_dir.name}."
+                )
+
+        target_dir.parent.mkdir(parents=True, exist_ok=True)
+        if target_dir.exists():
+            import shutil
+
+            shutil.rmtree(target_dir)
+
+        if candidate_dir == temp_extract_dir:
+            target_dir.mkdir(parents=True, exist_ok=True)
+            for child in temp_extract_dir.iterdir():
+                if child == target_dir:
+                    continue
+                child.rename(target_dir / child.name)
+        else:
+            candidate_dir.rename(target_dir)
+    finally:
+        import shutil
+
+        shutil.rmtree(temp_extract_dir, ignore_errors=True)
+
+
+def ensure_default_model(download_if_missing: bool, skip_if_missing: bool) -> Path | None:
+    manifest = load_default_model_manifest()
+    if manifest is None:
+        return None
+
+    target_dir = default_model_target_dir(manifest)
+    if is_complete_default_model_dir(target_dir):
+        return target_dir
+
+    print(f"DesktopWaifu default Genie model not found at: {target_dir}")
+    if skip_if_missing:
+        print("Skipping default model bootstrap because --skip-default-model was used.")
+        return None
+
+    auto_download = download_if_missing or str(os.environ.get("GENIE_AUTO_DOWNLOAD_DEFAULT_MODEL") or "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+
+    if not auto_download:
+        choice = input("Download the DesktopWaifu default clone model now? (Y/n): ").strip().lower()
+        auto_download = choice in {"", "y", "yes"}
+
+    if not auto_download:
+        raise SystemExit("The DesktopWaifu default Genie model is required for the intended clone flow.")
+
+    archive_path = download_default_model_archive(manifest)
+    extract_default_model_archive(archive_path, target_dir)
+
+    if not is_complete_default_model_dir(target_dir):
+        raise SystemExit(f"Default Genie model extraction did not produce a complete model folder: {target_dir}")
+
+    print(f"DesktopWaifu default Genie model is ready at: {target_dir}")
+    return target_dir
 
 
 def format_provider_list(providers: Sequence[Any]) -> str:
@@ -230,30 +409,36 @@ def main() -> None:
 
     default_genie_data_candidates = [
         *([Path(os.environ["GENIE_DATA_DIR"]).expanduser()] if os.environ.get("GENIE_DATA_DIR") else []),
-        Path(__file__).resolve().parent / "GenieData",
+        ROOT / "GenieData",
     ]
     default_genie_data_dir = next(
         (str(candidate) for candidate in default_genie_data_candidates if candidate.exists()),
         str(default_genie_data_candidates[-1]),
     )
 
-    parser = argparse.ArgumentParser(description="Start a local Genie-TTS server for the standalone test UI.")
+    parser = argparse.ArgumentParser(description="Start the DesktopWaifu Genie-TTS compat server.")
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8000)
     parser.add_argument("--workers", type=int, default=1)
     parser.add_argument("--genie-data-dir", default=default_genie_data_dir)
     parser.add_argument("--provider", choices=("auto", "cuda", "tensorrt", "cpu"), default="auto")
     parser.add_argument("--gpu-device-id", type=int, default=0)
-    parser.add_argument("--trt-cache-dir", default=str(Path(__file__).resolve().parent / ".cache" / "tensorrt"))
+    parser.add_argument("--trt-cache-dir", default=str(ROOT / ".cache" / "tensorrt"))
     parser.add_argument("--disable-tf32", action="store_true")
     parser.add_argument("--disable-cudnn-max-workspace", action="store_true")
     parser.add_argument("--enable-cudnn-conv1d-pad-to-nc1d", action="store_true")
     parser.add_argument("--disable-trt-fp16", action="store_true")
+    parser.add_argument("--download-default-model", action="store_true")
+    parser.add_argument("--skip-default-model", action="store_true")
     args = parser.parse_args()
 
     genie_data_dir = Path(args.genie_data_dir).resolve()
     trt_cache_dir = Path(args.trt_cache_dir).resolve()
     ensure_genie_data(genie_data_dir)
+    ensure_default_model(
+        download_if_missing=args.download_default_model,
+        skip_if_missing=args.skip_default_model,
+    )
 
     os.environ["PYTHONUTF8"] = "1"
     os.environ["PYTHONIOENCODING"] = "utf-8"
@@ -273,6 +458,7 @@ def main() -> None:
         enable_trt_fp16=not args.disable_trt_fp16,
     )
 
+    from genie_compat_api import register_compat_api
     import genie_tts as genie
     import genie_tts.ModelManager as genie_model_manager_module
     from genie_tts.ModelManager import model_manager

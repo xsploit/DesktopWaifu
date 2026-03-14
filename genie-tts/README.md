@@ -1,6 +1,6 @@
 # Genie-TTS
 
-Standalone Genie-TTS harness for the DesktopWaifu/ElectroWaifu workspace.
+Standalone DesktopWaifu Genie-TTS harness and compat API server.
 
 ## What it is
 
@@ -21,32 +21,69 @@ Standalone Genie-TTS harness for the DesktopWaifu/ElectroWaifu workspace.
 
 ## Setup
 
-### 1. Python side
+### Fast path with uv
 
-Create a venv if you want:
+```bash
+uv sync
+uv run python start_genie_server.py --download-default-model
+```
+
+That does the intended DesktopWaifu bootstrap:
+
+- installs Python dependencies
+- downloads `GenieData` on first run if needed
+- downloads the DesktopWaifu default converted `v2ProPlus` clone base on first run if needed
+- starts the compat API on `http://127.0.0.1:8000`
+
+The default converted model is downloaded from the DesktopWaifu release assets into:
+
+- `./models/converted/gpt-sovits-v2proplus-default`
+
+### pip / venv fallback
 
 ```bash
 python -m venv .venv
+pip install -r requirements.txt
+python start_genie_server.py --download-default-model
 ```
 
-Activate it, then:
+### UI side
 
 ```bash
-pip install -r requirements.txt
-python start_genie_server.py
+npm install
+npm start
 ```
+
+Open:
+
+`http://localhost:3088`
+
+### npm convenience scripts
+
+```bash
+npm run api
+# or
+npm run api:uv
+```
+
+These start the compat server with automatic default-model download enabled.
+
+## Defaults
 
 The helper defaults to:
 
 - host: `127.0.0.1`
 - port: `8000`
 - GenieData: `./GenieData`
+- DesktopWaifu default clone model:
+  - `./models/converted/gpt-sovits-v2proplus-default`
 
 Optional environment variables:
 
 - `GENIE_DATA_DIR`
 - `GENIE_CHARACTER_ROOTS`
 - `GENIE_PROPLUS_MODELS_DIR`
+- `GENIE_AUTO_DOWNLOAD_DEFAULT_MODEL=1`
 
 `GENIE_CHARACTER_ROOTS` can contain multiple directories separated by your platform path delimiter.
 
@@ -70,19 +107,11 @@ Notes on provider selection:
 - `tensorrt` requires the TensorRT runtime DLLs on `PATH` or startup will fail fast instead of silently dropping to CPU.
 - TensorRT cache files are written under `.cache/tensorrt/` by default.
 
-### 2. UI side
-
-```bash
-npm install
-npm start
-```
-
-Open:
-
-`http://localhost:3088`
-
 ## Notes
 
+- The intended DesktopWaifu clone path uses the shipped converted default model plus arbitrary wave sources.
+- Upstream Genie characters like `mika`, `thirtyseven`, and `feibi` are still supported as base models, but they are not the only intended default path.
+- `default-model.json` points at the DesktopWaifu release asset that contains the converted default model bundle.
 - The UI expects a real Genie character model folder for `load_character`.
 - A working v2 folder needs the ONNX files and bin sidecars.
 - A working v2ProPlus folder is usually a full `CharacterModels/v2ProPlus/<character>/tts_models` bundle.
@@ -93,6 +122,7 @@ Open:
 - The helper script works around two current Genie Windows issues:
   - emoji output crashing non-UTF8 consoles
   - interactive `GenieData` download prompt during import
+- The helper script can also auto-download the DesktopWaifu default converted clone model from GitHub Releases.
 - The helper script also forces tuned ONNX Runtime provider/session settings instead of using Genie's package defaults.
 
 ## What is intentionally not committed

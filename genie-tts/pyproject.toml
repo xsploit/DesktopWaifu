@@ -1,0 +1,16 @@
+[project]
+name = "desktopwaifu-genie-tts"
+version = "0.1.0"
+description = "DesktopWaifu Genie-TTS compatibility server and test harness"
+requires-python = ">=3.10"
+dependencies = [
+    "fastapi",
+    "faster-whisper",
+    "genie-tts",
+    "huggingface_hub",
+    "pydantic",
+    "uvicorn",
+]
+
+[tool.uv]
+package = false

@@ -528,7 +528,7 @@ async function startManagedGenieServer({
   const parsedUrl = new URL(normalizeServerUrl(serverUrl || DEFAULT_UPSTREAM_SERVER_URL));
   const host = parsedUrl.hostname;
   const port = Number(parsedUrl.port || (parsedUrl.protocol === 'https:' ? 443 : 80));
-  const args = ['genie_compat_api.py', '--provider', provider, '--host', host, '--port', String(port)];
+  const args = ['genie_compat_api.py', '--provider', provider, '--host', host, '--port', String(port), '--download-default-model'];
   if (enableConv1dPadToNc1d) {
     args.push('--enable-cudnn-conv1d-pad-to-nc1d');
   }

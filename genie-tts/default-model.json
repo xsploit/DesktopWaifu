@@ -1,0 +1,9 @@
+{
+  "id": "gpt-sovits-v2pro-default",
+  "name": "GPT-SoVITS v2ProPlus Default",
+  "asset_name": "DesktopWaifu-Genie-Default-v2ProPlus.zip",
+  "release_tag": "v0.0.6",
+  "url": "https://github.com/xsploit/DesktopWaifu/releases/download/v0.0.6/DesktopWaifu-Genie-Default-v2ProPlus.zip",
+  "sha256": "3D85EE75BB84F9F9FDAB2303C2955E2A03B6E59EC37E16BBCD4EF8AD7637AB6D",
+  "target_dir": "models/converted/gpt-sovits-v2proplus-default"
+}

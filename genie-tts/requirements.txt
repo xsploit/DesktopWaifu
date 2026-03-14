@@ -1,4 +1,6 @@
+fastapi
+faster-whisper
 genie-tts
 huggingface_hub
+pydantic
 uvicorn
-faster-whisper
