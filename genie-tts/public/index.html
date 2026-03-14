@@ -1,0 +1,204 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Genie-TTS Test</title>
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <main class="shell">
+    <section class="hero">
+      <p class="eyebrow">Standalone GPT-SoVITS ONNX Lab</p>
+      <h1>Genie-TTS Test</h1>
+      <p class="lede">
+        Load a local Genie ONNX character, upload a reference clip with reference text,
+        then generate speech through a separate local test harness without touching your current app.
+      </p>
+    </section>
+
+    <section class="panel grid">
+      <section class="stack">
+        <article class="card">
+          <h2>Server</h2>
+          <div class="field">
+            <label for="serverUrl">Genie Server URL</label>
+            <input id="serverUrl" type="text" value="http://127.0.0.1:8000">
+          </div>
+          <div class="field">
+            <label for="serverProvider">Managed Provider</label>
+            <select id="serverProvider">
+              <option value="cuda" selected>CUDA</option>
+              <option value="auto">Auto</option>
+              <option value="cpu">CPU</option>
+              <option value="tensorrt">TensorRT</option>
+            </select>
+          </div>
+          <div class="field checkbox">
+            <input id="enableConv1dPadToNc1d" type="checkbox">
+            <label for="enableConv1dPadToNc1d">Enable cuDNN Conv1D pad to NC1D</label>
+          </div>
+          <div class="actions">
+            <button id="healthBtn" type="button">Check Server</button>
+            <button id="startManagedServerBtn" type="button" class="ghost">Start Local Server</button>
+            <button id="stopManagedServerBtn" type="button" class="ghost">Stop Local Server</button>
+            <span id="healthStatus" class="inline-status">Not checked.</span>
+          </div>
+          <div id="managedServerStatus" class="inline-status">No managed server started.</div>
+        </article>
+
+        <article class="card">
+          <h2>Character</h2>
+          <div class="field">
+            <label for="characterPreset">Discovered Characters</label>
+            <select id="characterPreset">
+              <option value="">No scan yet</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="characterName">Character Name</label>
+            <input id="characterName" type="text" value="demo">
+          </div>
+          <div class="field">
+            <label for="modelDir">ONNX Model Folder</label>
+            <input id="modelDir" type="text" value="" placeholder="Use Scan Characters or paste a CharacterModels\v2ProPlus\...\tts_models path">
+          </div>
+          <div class="field checkbox">
+            <input id="useV2ProPlus" type="checkbox" checked>
+            <label for="useV2ProPlus">Use v2ProPlus</label>
+          </div>
+          <div class="field">
+            <label for="proPlusModelDir">v2ProPlus Add-on Folder</label>
+            <input id="proPlusModelDir" type="text" value="" placeholder="Optional override for v2ProPlus\Models">
+          </div>
+          <p class="microcopy">If your model folder is already a full `CharacterModels/v2ProPlus/.../tts_models` bundle, the add-on field is ignored.</p>
+          <div class="actions">
+            <button id="findModelsBtn" type="button" class="ghost">Scan Characters</button>
+            <button id="useSelectedCharacterBtn" type="button" class="ghost">Use Selected</button>
+          </div>
+          <div id="modelSearchResult" class="inline-status">No character scan yet.</div>
+          <div class="field">
+            <label for="language">Language</label>
+            <select id="language">
+              <option value="English">English</option>
+              <option value="Japanese">Japanese</option>
+              <option value="Chinese">Chinese</option>
+            </select>
+          </div>
+          <div class="actions">
+            <button id="loadCharacterBtn" type="button">Load Character</button>
+            <button id="unloadCharacterBtn" type="button" class="ghost">Unload</button>
+          </div>
+        </article>
+
+        <article class="card">
+          <h2>Reference</h2>
+          <div class="field">
+            <label for="referenceFile">Reference Audio</label>
+            <input id="referenceFile" type="file" accept=".wav,.flac,.ogg,.aiff,.aif,audio/*">
+          </div>
+          <div class="field">
+            <label for="whisperModel">Whisper Model</label>
+            <select id="whisperModel">
+              <option value="tiny">tiny</option>
+              <option value="base">base</option>
+              <option value="small" selected>small</option>
+              <option value="medium">medium</option>
+              <option value="large-v3-turbo">large-v3-turbo</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="whisperLanguage">Whisper Language</label>
+            <input id="whisperLanguage" type="text" placeholder="auto">
+          </div>
+          <div class="field">
+            <label for="referenceText">Reference Text</label>
+            <textarea id="referenceText" rows="4" placeholder="Transcript of the reference audio"></textarea>
+          </div>
+          <div class="actions">
+            <button id="transcribeReferenceBtn" type="button">Transcribe Reference</button>
+            <button id="setReferenceBtn" type="button">Set Reference</button>
+            <button id="clearReferenceCacheBtn" type="button" class="ghost">Clear Cache</button>
+          </div>
+        </article>
+
+        <article class="card">
+          <h2>Synthesis</h2>
+          <div class="field">
+            <label for="targetText">Target Text</label>
+            <textarea id="targetText" rows="7">Hello from the standalone Genie TTS test harness. This should use the loaded character and the uploaded reference clip to clone delivery more faithfully than a tiny CPU model.</textarea>
+          </div>
+          <div class="field checkbox">
+            <input id="splitSentence" type="checkbox">
+            <label for="splitSentence">Split sentence</label>
+          </div>
+          <div class="actions">
+            <button id="generateBtn" type="button">Generate WAV</button>
+            <button id="stopBtn" type="button" class="ghost">Stop</button>
+          </div>
+        </article>
+
+        <article class="card">
+          <h2>Chunk Test</h2>
+          <p class="microcopy">This uses Genie-style sentence splitting outside the TTS call, then overlaps generation and playback through a queued playlist.</p>
+          <div class="split-grid">
+            <div class="field">
+              <label for="chunkMaxLen">Chunk Max Len</label>
+              <input id="chunkMaxLen" type="number" min="1" max="200" step="1" value="40">
+            </div>
+            <div class="field">
+              <label for="chunkMinLen">Chunk Min Len</label>
+              <input id="chunkMinLen" type="number" min="1" max="200" step="1" value="5">
+            </div>
+          </div>
+          <div class="actions">
+            <button id="splitPreviewBtn" type="button" class="ghost">Preview Split</button>
+            <button id="runChunkTestBtn" type="button">Run Chunk Test</button>
+            <button id="stopChunkTestBtn" type="button" class="ghost">Stop Chunk Test</button>
+          </div>
+          <div class="chunk-panels">
+            <div>
+              <h3>Chunk Plan</h3>
+              <pre id="chunkPlanLog" class="trace-log compact-trace">No chunk plan yet.</pre>
+            </div>
+            <div>
+              <h3>Chunk Metrics</h3>
+              <pre id="chunkMetricsLog" class="trace-log compact-trace">No chunk run yet.</pre>
+            </div>
+          </div>
+        </article>
+      </section>
+
+      <aside class="stack">
+        <article class="card status-card">
+          <h2>Status</h2>
+          <p id="statusMessage" class="status-message">Ready.</p>
+          <dl class="metrics">
+            <div>
+              <dt>Elapsed</dt>
+              <dd id="elapsedValue">—</dd>
+            </div>
+            <div>
+              <dt>Server</dt>
+              <dd id="serverEcho">—</dd>
+            </div>
+          </dl>
+        </article>
+
+        <article class="card">
+          <h2>Output</h2>
+          <audio id="player" controls></audio>
+          <a id="downloadLink" class="download hidden" download="genie-output.wav">Download WAV</a>
+        </article>
+
+        <article class="card">
+          <h2>Trace</h2>
+          <pre id="traceLog" class="trace-log">No requests yet.</pre>
+        </article>
+      </aside>
+    </section>
+  </main>
+
+  <script src="./app.js"></script>
+</body>
+</html>

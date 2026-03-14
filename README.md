@@ -138,6 +138,13 @@ That means desktop-specific behavior should be fixed here, not backported mental
 - Python environment for Genie compat server if you want local voice cloning
 - Windows is the currently validated desktop target
 
+### Included side projects
+
+- [`genie-tts`](./genie-tts)
+  - standalone Genie TTS harness kept in this repo
+  - source-only: models, GenieData, caches, temp files, and uploaded voices stay local
+  - use this when you want to iterate on Genie/FastAPI/Whisper behavior outside the desktop shell
+
 ### Dev run
 
 ```bash
