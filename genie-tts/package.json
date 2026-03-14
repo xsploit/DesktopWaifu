@@ -7,6 +7,8 @@
   "scripts": {
     "api": "python genie_compat_api.py --download-default-model",
     "api:uv": "uv run python genie_compat_api.py --download-default-model",
+    "build:windows-onedir": "python build_windows_onedir.py",
+    "build:windows-installer": "python build_windows_installer.py --rebuild-onedir",
     "start": "node server.js",
     "dev": "node server.js"
   },

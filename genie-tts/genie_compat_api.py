@@ -15,9 +15,11 @@ from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import Response
 from pydantic import BaseModel
 
-ROOT = Path(__file__).resolve().parent
-TMP_DIR = ROOT / "tmp"
-DATA_DIR = ROOT / "data"
+from runtime_paths import RESOURCE_ROOT, STATE_ROOT, state_path
+
+ROOT = RESOURCE_ROOT
+TMP_DIR = state_path("tmp")
+DATA_DIR = state_path("data")
 VOICE_PRESETS_FILE = DATA_DIR / "genie-voice-presets.json"
 VOICE_UPLOADS_DIR = DATA_DIR / "voices"
 GENIE_SAMPLE_RATE = 32000
@@ -36,6 +38,7 @@ def split_env_paths(name: str) -> list[Path]:
 
 DEFAULT_GENIE_PROPLUS_CANDIDATES = [
     *split_env_paths("GENIE_PROPLUS_MODELS_DIR"),
+    STATE_ROOT / "models" / "High-Logic-Genie" / "Data" / "v2ProPlus" / "Models",
     ROOT / "models" / "High-Logic-Genie" / "Data" / "v2ProPlus" / "Models",
     WINDOWS_DEFAULT_GENIE_PROPLUS_DIR,
 ]
@@ -45,9 +48,15 @@ DEFAULT_GENIE_PROPLUS_DIR = next(
 )
 DEFAULT_GENIE_CHARACTER_ROOT_CANDIDATES = [
     *split_env_paths("GENIE_CHARACTER_ROOTS"),
+    STATE_ROOT / "models" / "High-Logic-Genie" / "CharacterModels" / "v2ProPlus",
     ROOT / "models" / "High-Logic-Genie" / "CharacterModels" / "v2ProPlus",
 ]
+DEFAULT_BUNDLED_WAVE_PRESET_ROOT_CANDIDATES = [
+    STATE_ROOT / "bundled-wave-presets",
+    ROOT / "bundled-wave-presets",
+]
 DEFAULT_CONVERTED_V2PRO_CHARACTER_CANDIDATES = [
+    STATE_ROOT / "models" / "converted" / "gpt-sovits-v2proplus-default",
     ROOT / "models" / "converted" / "gpt-sovits-v2proplus-default",
 ]
 PREFERRED_GENIE_CHARACTER_IDS = ("mika", "thirtyseven", "feibi")
@@ -87,6 +96,7 @@ def _bootstrap_runtime() -> None:
     if not os.environ.get("GENIE_DATA_DIR"):
         genie_data_candidates = [
             *split_env_paths("GENIE_DATA_DIR"),
+            STATE_ROOT / "GenieData",
             ROOT / "GenieData",
         ]
         for candidate in genie_data_candidates:
@@ -736,8 +746,6 @@ async def resolve_default_converted_v2pro_preset() -> dict[str, Any] | None:
                 "referenceText": mika_preset["referenceText"],
                 "referenceLanguage": mika_preset["referenceLanguage"],
             }
-        if reference_prompt is None:
-            continue
 
         return normalize_voice_preset(
             {
@@ -747,15 +755,73 @@ async def resolve_default_converted_v2pro_preset() -> dict[str, Any] | None:
                 "modelDir": str(normalized_model_dir),
                 "proPlusModelDir": str(DEFAULT_GENIE_PROPLUS_DIR) if DEFAULT_GENIE_PROPLUS_DIR.exists() else None,
                 "useV2ProPlus": is_valid_genie_v2proplus_dir(normalized_model_dir),
-                "referenceAudioPath": reference_prompt["referenceAudioPath"],
-                "referenceText": reference_prompt["referenceText"],
-                "referenceLanguage": reference_prompt["referenceLanguage"],
+                "referenceAudioPath": reference_prompt["referenceAudioPath"] if reference_prompt else "",
+                "referenceText": reference_prompt["referenceText"] if reference_prompt else "",
+                "referenceLanguage": reference_prompt["referenceLanguage"] if reference_prompt else DEFAULT_REFERENCE_LANGUAGE,
                 "builtIn": True,
                 "source": "builtin",
             }
         )
 
     return None
+
+
+async def resolve_bundled_wave_presets() -> list[dict[str, Any]]:
+    base_model_by_id: dict[str, dict[str, Any]] = {}
+    default_base_preset = await resolve_default_converted_v2pro_preset()
+    if default_base_preset:
+        base_model_by_id[default_base_preset["id"]] = default_base_preset
+
+    for builtin_preset in await resolve_builtin_character_presets():
+        base_model_by_id[builtin_preset["id"]] = builtin_preset
+
+    discovered_dirs: dict[str, Path] = {}
+    for root_dir in DEFAULT_BUNDLED_WAVE_PRESET_ROOT_CANDIDATES:
+        if not root_dir.exists():
+            continue
+        for child in root_dir.iterdir():
+            if child.is_dir() and child.name.strip().lower() not in discovered_dirs:
+                discovered_dirs[child.name.strip().lower()] = child.resolve()
+
+    presets: list[dict[str, Any]] = []
+    for preset_id in sorted(discovered_dirs):
+        preset_dir = discovered_dirs[preset_id]
+        metadata_path = preset_dir / "metadata.json"
+        if not metadata_path.exists():
+            continue
+
+        metadata = await safe_read_json(metadata_path, {})
+        audio_file_name = str(metadata.get("audioFile") or "reference.wav").strip()
+        reference_audio_path = (preset_dir / audio_file_name).resolve()
+        if not reference_audio_path.exists():
+            continue
+
+        base_voice_id = str(metadata.get("baseVoiceId") or "gpt-sovits-v2pro-default").strip() or "gpt-sovits-v2pro-default"
+        base_preset = base_model_by_id.get(base_voice_id) or default_base_preset
+        if not base_preset:
+            continue
+
+        reference_text = str(metadata.get("referenceText") or "").strip()
+        reference_language = str(metadata.get("referenceLanguage") or "").strip() or infer_language_from_text(reference_text, DEFAULT_REFERENCE_LANGUAGE)
+        presets.append(
+            normalize_voice_preset(
+                {
+                    "id": str(metadata.get("id") or preset_id).strip() or preset_id,
+                    "name": str(metadata.get("name") or preset_id.replace("-", " ").title()).strip() or preset_id,
+                    "characterName": base_preset["characterName"],
+                    "modelDir": base_preset["modelDir"],
+                    "proPlusModelDir": base_preset.get("proPlusModelDir"),
+                    "useV2ProPlus": bool(base_preset.get("useV2ProPlus", True)),
+                    "referenceAudioPath": str(reference_audio_path),
+                    "referenceText": reference_text,
+                    "referenceLanguage": reference_language,
+                    "builtIn": True,
+                    "source": "bundled-wave",
+                }
+            )
+        )
+
+    return presets
 
 
 async def save_voice_preset_state() -> None:
@@ -782,7 +848,11 @@ async def load_voice_preset_state() -> dict[str, Any]:
     normalized_items = [
         item
         for item in normalized_items
-        if item["id"] and item["name"] and item["characterName"] and item["modelDir"] and item["referenceAudioPath"]
+        if item["id"]
+        and item["name"]
+        and item["characterName"]
+        and item["modelDir"]
+        and (item["referenceAudioPath"] or item["id"] == "gpt-sovits-v2pro-default")
     ]
 
     builtin_presets = [
@@ -790,6 +860,7 @@ async def load_voice_preset_state() -> dict[str, Any]:
         for preset in (
             await resolve_default_converted_v2pro_preset(),
             *await resolve_builtin_character_presets(),
+            *await resolve_bundled_wave_presets(),
         )
         if preset
     ]
@@ -806,7 +877,8 @@ async def load_voice_preset_state() -> dict[str, Any]:
     active_voice_id = str((file_state or {}).get("activeVoiceId") or "").strip() if isinstance(file_state, dict) else ""
     if not any(item["id"] == active_voice_id for item in normalized_items):
         preferred_default = next((item["id"] for item in builtin_presets if item["id"] == "mika"), "")
-        active_voice_id = preferred_default or (builtin_presets[0]["id"] if builtin_presets else "") or (normalized_items[0]["id"] if normalized_items else "")
+        first_reference_voice_id = next((item["id"] for item in normalized_items if item.get("referenceAudioPath")), "")
+        active_voice_id = preferred_default or first_reference_voice_id or ""
         did_change = True
 
     voice_preset_state = {
@@ -823,7 +895,7 @@ async def load_voice_preset_state() -> dict[str, Any]:
 
 def get_voice_response(preset: dict[str, Any], active_voice_id: str) -> dict[str, Any]:
     source = str(preset.get("source") or "custom").strip() or "custom"
-    is_base_model = bool(preset.get("builtIn")) or preset["id"] == "gpt-sovits-v2pro-default"
+    is_base_model = source == "builtin" or preset["id"] == "gpt-sovits-v2pro-default"
     return {
         "id": preset["id"],
         "name": preset["name"],
@@ -833,7 +905,7 @@ def get_voice_response(preset: dict[str, Any], active_voice_id: str) -> dict[str
         "built_in": bool(preset.get("builtIn")),
         "source": source,
         "can_be_base_model": is_base_model,
-        "can_be_wave_source": preset["id"] != "gpt-sovits-v2pro-default",
+        "can_be_wave_source": bool(preset.get("referenceAudioPath")) and preset["id"] != "gpt-sovits-v2pro-default",
         "created_at": preset.get("createdAt"),
         "updated_at": preset.get("updatedAt"),
     }

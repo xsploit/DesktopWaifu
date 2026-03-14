@@ -2,6 +2,7 @@ node_modules/
 tmp/
 .venv/
 .cache/
+build/
 __pycache__/
 data/
 GenieData/

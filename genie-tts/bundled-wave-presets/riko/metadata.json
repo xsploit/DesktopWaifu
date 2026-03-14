@@ -1,0 +1,8 @@
+{
+  "id": "riko",
+  "name": "Riko",
+  "baseVoiceId": "gpt-sovits-v2pro-default",
+  "audioFile": "reference.wav",
+  "referenceLanguage": "English",
+  "referenceText": "This is a sample voice for you to just get started with because it sounds kind of cute, but just make sure this doesn't have long silences. This is a sample voice for you to just get started with because it sounds kind of cute, but just make sure this doesn't have long silences."
+}

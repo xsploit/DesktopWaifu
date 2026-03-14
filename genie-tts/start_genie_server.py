@@ -15,8 +15,13 @@ from typing import Any, Sequence
 
 import uvicorn
 
-ROOT = Path(__file__).resolve().parent
+from runtime_paths import RESOURCE_ROOT, STATE_ROOT, ensure_windows_dll_search_paths, state_path
+
+ROOT = RESOURCE_ROOT
 DEFAULT_MODEL_MANIFEST_PATH = ROOT / "default-model.json"
+DEFAULT_CHARACTER_MODELS_ROOT = STATE_ROOT / "models" / "High-Logic-Genie"
+DEFAULT_CHARACTER_MODELS_DIR = DEFAULT_CHARACTER_MODELS_ROOT / "CharacterModels" / "v2ProPlus"
+DEFAULT_BUILTIN_CHARACTER_IDS = ("mika", "thirtyseven", "feibi")
 DEFAULT_MODEL_REQUIRED_FILES = (
     "prompt_encoder_fp32.onnx",
     "prompt_encoder_fp16.bin",
@@ -28,6 +33,17 @@ DEFAULT_MODEL_REQUIRED_FILES = (
     "vits_fp16.bin",
     "vits_fp32.onnx",
 )
+CUDA_RUNTIME_DLLS = (
+    "cudart64_12.dll",
+    "cudnn64_9.dll",
+    "cudnn_adv64_9.dll",
+    "cudnn_cnn64_9.dll",
+    "cudnn_engines_precompiled64_9.dll",
+    "cudnn_engines_runtime_compiled64_9.dll",
+    "cudnn_graph64_9.dll",
+    "cudnn_heuristic64_9.dll",
+    "cudnn_ops64_9.dll",
+)
 
 
 def configure_console() -> None:
@@ -37,13 +53,21 @@ def configure_console() -> None:
             stream.reconfigure(encoding="utf-8", errors="replace")
 
 
-def ensure_genie_data(genie_data_dir: Path) -> None:
+def ensure_genie_data(genie_data_dir: Path, download_if_missing: bool = False) -> None:
     if genie_data_dir.exists():
         return
 
     print(f"GenieData not found at: {genie_data_dir}")
-    choice = input("Download GenieData from Hugging Face now? (y/N): ").strip().lower()
-    if choice != "y":
+    auto_download = download_if_missing or str(os.environ.get("GENIE_AUTO_DOWNLOAD_DATA") or "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+    if not auto_download:
+        choice = input("Download GenieData from Hugging Face now? (y/N): ").strip().lower()
+        auto_download = choice == "y"
+    if not auto_download:
         raise SystemExit("GenieData is required to start Genie-TTS.")
 
     from huggingface_hub import snapshot_download
@@ -60,6 +84,50 @@ def ensure_genie_data(genie_data_dir: Path) -> None:
     print("GenieData download complete.")
 
 
+def ensure_builtin_character_models(download_if_missing: bool = False, character_ids: Sequence[str] | None = None) -> list[Path]:
+    requested_ids = [
+        str(character_id).strip().lower()
+        for character_id in (character_ids or DEFAULT_BUILTIN_CHARACTER_IDS)
+        if str(character_id).strip()
+    ]
+    if not requested_ids:
+        return []
+
+    existing_dirs = [DEFAULT_CHARACTER_MODELS_DIR / character_id for character_id in requested_ids]
+    missing_ids = [character_id for character_id, path in zip(requested_ids, existing_dirs, strict=False) if not path.exists()]
+    if not missing_ids:
+        return existing_dirs
+
+    auto_download = download_if_missing or str(os.environ.get("GENIE_AUTO_DOWNLOAD_CHARACTERS") or "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+    if not auto_download:
+        choice = input(
+            f"Download built-in Genie character models ({', '.join(missing_ids)}) from Hugging Face now? (Y/n): "
+        ).strip().lower()
+        auto_download = choice in {"", "y", "yes"}
+    if not auto_download:
+        return [path for path in existing_dirs if path.exists()]
+
+    from huggingface_hub import snapshot_download
+
+    DEFAULT_CHARACTER_MODELS_ROOT.mkdir(parents=True, exist_ok=True)
+    allow_patterns = [f"CharacterModels/v2ProPlus/{character_id}/*" for character_id in missing_ids]
+    print(f"Downloading built-in Genie character models: {', '.join(missing_ids)}")
+    snapshot_download(
+        repo_id="High-Logic/Genie",
+        repo_type="model",
+        allow_patterns=allow_patterns,
+        local_dir=str(DEFAULT_CHARACTER_MODELS_ROOT),
+        local_dir_use_symlinks=False,
+    )
+    print("Built-in Genie character model download complete.")
+    return [DEFAULT_CHARACTER_MODELS_DIR / character_id for character_id in requested_ids if (DEFAULT_CHARACTER_MODELS_DIR / character_id).exists()]
+
+
 def load_default_model_manifest(manifest_path: Path = DEFAULT_MODEL_MANIFEST_PATH) -> dict[str, Any] | None:
     if not manifest_path.exists():
         return None
@@ -70,7 +138,7 @@ def default_model_target_dir(manifest: dict[str, Any]) -> Path:
     target_dir = str(manifest.get("target_dir") or "").strip()
     if not target_dir:
         raise SystemExit("default-model.json is missing target_dir.")
-    return (ROOT / target_dir).resolve()
+    return (STATE_ROOT / target_dir).resolve()
 
 
 def is_complete_default_model_dir(target_dir: Path) -> bool:
@@ -102,7 +170,7 @@ def download_default_model_archive(manifest: dict[str, Any]) -> Path:
         raise SystemExit("default-model.json is missing url.")
 
     asset_name = str(manifest.get("asset_name") or "").strip() or Path(asset_url).name or "DesktopWaifu-Genie-Default.zip"
-    downloads_dir = ROOT / ".cache" / "downloads"
+    downloads_dir = state_path(".cache", "downloads")
     downloads_dir.mkdir(parents=True, exist_ok=True)
     archive_path = downloads_dir / asset_name
     expected_hash = str(manifest.get("sha256") or "").strip()
@@ -144,7 +212,7 @@ def download_default_model_archive(manifest: dict[str, Any]) -> Path:
 
 
 def extract_default_model_archive(archive_path: Path, target_dir: Path) -> None:
-    cache_root = ROOT / ".cache"
+    cache_root = state_path(".cache")
     cache_root.mkdir(parents=True, exist_ok=True)
     temp_extract_dir = Path(tempfile.mkdtemp(prefix="genie-default-model-", dir=cache_root))
     try:
@@ -271,6 +339,19 @@ def build_tensorrt_provider_options(
     }
 
 
+def get_missing_windows_dlls(required_dlls: Sequence[str]) -> list[str]:
+    if os.name != "nt":
+        return []
+
+    missing: list[str] = []
+    for dll_name in required_dlls:
+        try:
+            ctypes.WinDLL(dll_name)
+        except OSError:
+            missing.append(dll_name)
+    return missing
+
+
 def resolve_execution_providers(
     provider_mode: str,
     cache_dir: Path,
@@ -282,7 +363,8 @@ def resolve_execution_providers(
 ) -> tuple[list[Any], list[str], str]:
     import onnxruntime as ort
 
-    if hasattr(ort, "preload_dlls"):
+    ensure_windows_dll_search_paths()
+    if provider_mode in {"cuda", "tensorrt"} and hasattr(ort, "preload_dlls"):
         ort.preload_dlls()
 
     available = list(ort.get_available_providers())
@@ -297,6 +379,7 @@ def resolve_execution_providers(
             raise SystemExit(
                 f"CUDAExecutionProvider is not available in this Python environment. Available providers: {available}"
             )
+        validate_cuda_runtime()
         return [("CUDAExecutionProvider", cuda_options), "CPUExecutionProvider"], available, ort.__version__
 
     if provider_mode == "tensorrt":
@@ -315,6 +398,8 @@ def resolve_execution_providers(
         ], available, ort.__version__
 
     if "CUDAExecutionProvider" in available:
+        if os.name == "nt" and get_missing_windows_dlls(CUDA_RUNTIME_DLLS):
+            return ["CPUExecutionProvider"], available, ort.__version__
         return [("CUDAExecutionProvider", cuda_options), "CPUExecutionProvider"], available, ort.__version__
 
     return ["CPUExecutionProvider"], available, ort.__version__
@@ -330,22 +415,32 @@ def validate_tensorrt_runtime() -> None:
     if os.name != "nt":
         return
 
+    ensure_windows_dll_search_paths()
     ensure_tensorrt_runtime_search_path()
 
-    required_dlls = (
-        "nvinfer_10.dll",
-        "nvinfer_plugin_10.dll",
+    missing = get_missing_windows_dlls(
+        (
+            "nvinfer_10.dll",
+            "nvinfer_plugin_10.dll",
+        )
     )
-    missing = []
-    for dll_name in required_dlls:
-        try:
-            ctypes.WinDLL(dll_name)
-        except OSError:
-            missing.append(dll_name)
 
     if missing:
         raise SystemExit(
             "TensorRT execution was requested, but the TensorRT runtime DLLs are not available on PATH: "
+            + ", ".join(missing)
+        )
+
+
+def validate_cuda_runtime() -> None:
+    if os.name != "nt":
+        return
+
+    ensure_windows_dll_search_paths(CUDA_RUNTIME_DLLS)
+    missing = get_missing_windows_dlls(CUDA_RUNTIME_DLLS)
+    if missing:
+        raise SystemExit(
+            "CUDA execution was requested, but the CUDA/cuDNN runtime DLLs are not available on PATH: "
             + ", ".join(missing)
         )
 
@@ -409,6 +504,7 @@ def main() -> None:
 
     default_genie_data_candidates = [
         *([Path(os.environ["GENIE_DATA_DIR"]).expanduser()] if os.environ.get("GENIE_DATA_DIR") else []),
+        STATE_ROOT / "GenieData",
         ROOT / "GenieData",
     ]
     default_genie_data_dir = next(
@@ -421,23 +517,30 @@ def main() -> None:
     parser.add_argument("--port", type=int, default=8000)
     parser.add_argument("--workers", type=int, default=1)
     parser.add_argument("--genie-data-dir", default=default_genie_data_dir)
-    parser.add_argument("--provider", choices=("auto", "cuda", "tensorrt", "cpu"), default="auto")
+    parser.add_argument("--provider", choices=("auto", "cuda", "tensorrt", "cpu"), default="cuda")
     parser.add_argument("--gpu-device-id", type=int, default=0)
-    parser.add_argument("--trt-cache-dir", default=str(ROOT / ".cache" / "tensorrt"))
+    parser.add_argument("--trt-cache-dir", default=str(state_path(".cache", "tensorrt")))
     parser.add_argument("--disable-tf32", action="store_true")
     parser.add_argument("--disable-cudnn-max-workspace", action="store_true")
     parser.add_argument("--enable-cudnn-conv1d-pad-to-nc1d", action="store_true")
     parser.add_argument("--disable-trt-fp16", action="store_true")
     parser.add_argument("--download-default-model", action="store_true")
     parser.add_argument("--skip-default-model", action="store_true")
+    parser.add_argument("--download-characters", action="store_true")
     args = parser.parse_args()
 
     genie_data_dir = Path(args.genie_data_dir).resolve()
     trt_cache_dir = Path(args.trt_cache_dir).resolve()
-    ensure_genie_data(genie_data_dir)
+    ensure_genie_data(
+        genie_data_dir,
+        download_if_missing=args.download_default_model,
+    )
     ensure_default_model(
         download_if_missing=args.download_default_model,
         skip_if_missing=args.skip_default_model,
+    )
+    ensure_builtin_character_models(
+        download_if_missing=args.download_default_model or args.download_characters,
     )
 
     os.environ["PYTHONUTF8"] = "1"
