@@ -5,8 +5,8 @@
   "description": "Standalone Genie-TTS test harness",
   "main": "server.js",
   "scripts": {
-    "api": "python start_genie_server.py --download-default-model",
-    "api:uv": "uv run python start_genie_server.py --download-default-model",
+    "api": "python genie_compat_api.py --download-default-model",
+    "api:uv": "uv run python genie_compat_api.py --download-default-model",
     "start": "node server.js",
     "dev": "node server.js"
   },

@@ -97,8 +97,20 @@ def _bootstrap_runtime() -> None:
 
 _bootstrap_runtime()
 
-from genie_tts import Server as genie_server
-from genie_tts.ModelManager import model_manager
+genie_server: Any | None = None
+model_manager: Any | None = None
+
+
+def ensure_genie_runtime() -> tuple[Any, Any]:
+    global genie_server, model_manager
+    if genie_server is None or model_manager is None:
+        from genie_tts import Server as imported_genie_server
+        from genie_tts.ModelManager import model_manager as imported_model_manager
+
+        genie_server = imported_genie_server
+        model_manager = imported_model_manager
+
+    return genie_server, model_manager
 
 voice_preset_state: dict[str, Any] | None = None
 current_prepared_voice = {
@@ -144,6 +156,8 @@ class TtsStreamPayload(BaseModel):
 
 
 def register_compat_api(app: FastAPI) -> None:
+    ensure_genie_runtime()
+
     if any(route.path == "/v1/health" for route in app.routes):
         return
 

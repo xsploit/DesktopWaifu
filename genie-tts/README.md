@@ -25,7 +25,7 @@ Standalone DesktopWaifu Genie-TTS harness and compat API server.
 
 ```bash
 uv sync
-uv run python start_genie_server.py --download-default-model
+uv run python genie_compat_api.py --download-default-model
 ```
 
 That does the intended DesktopWaifu bootstrap:
@@ -44,7 +44,7 @@ The default converted model is downloaded from the DesktopWaifu release assets i
 ```bash
 python -m venv .venv
 pip install -r requirements.txt
-python start_genie_server.py --download-default-model
+python genie_compat_api.py --download-default-model
 ```
 
 ### UI side
